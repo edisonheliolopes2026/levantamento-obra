@@ -128,7 +128,7 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
   #status{gap:8px;overflow-x:auto}
   #coords{display:none}
   #selBar{left:8px;right:8px;top:8px;bottom:auto;transform:none;max-width:none;justify-content:space-between}
-  #selBar.low{top:96px}
+  #selBar.low{top:auto;bottom:8px;right:56px}
   #selBar .nm{display:none}
   #selBar .hbtn{flex:1;justify-content:center;padding:9px 6px}
   #selBar [data-sb=x]{flex:0 0 38px}
@@ -364,7 +364,14 @@ function segDist(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy;let t=l2?((p.
 const symR=v=>Math.max(7,Math.min(15,0.14*v.scale));
 
 function haloText(g,t,x,y,color='#1f2430',font='12px system-ui'){g.font=font;g.lineJoin='round';g.lineWidth=3.5;g.strokeStyle='rgba(255,255,255,.92)';g.strokeText(t,x,y);g.fillStyle=color;g.fillText(t,x,y)}
-function alongText(g,v,a,b,t,off,color,font){const ax=a.x*v.scale+v.ox,ay=a.y*v.scale+v.oy,bx=b.x*v.scale+v.ox,by=b.y*v.scale+v.oy;let ang=Math.atan2(by-ay,bx-ax);if(ang>Math.PI/2+1e-3||ang<-Math.PI/2+1e-3)ang+=Math.PI;g.save();g.translate((ax+bx)/2,(ay+by)/2);g.rotate(ang);g.textAlign='center';g.textBaseline='bottom';haloText(g,t,0,-off,color,font);g.restore()}
+let LBL=null;
+function lblFree(x,y,w,h){if(!LBL)return true;const P=2;for(const q of LBL)if(x-P<q.x+q.w&&x+w+P>q.x&&y-P<q.y+q.h&&y+h+P>q.y)return false;LBL.push({x,y,w,h});return true}
+function alongText(g,v,a,b,t,off,color,font,below){const ax=a.x*v.scale+v.ox,ay=a.y*v.scale+v.oy,bx=b.x*v.scale+v.ox,by=b.y*v.scale+v.oy;let ang=Math.atan2(by-ay,bx-ax),flip=false;if(ang>Math.PI/2+1e-3||ang<-Math.PI/2+1e-3){ang+=Math.PI;flip=true}
+  g.save();g.font=font;const w=g.measureText(t).width,h=parseFloat((font.match(/(\d+(?:\.\d+)?)px/)||[0,11])[1])+1;
+  const y0=below?off:-off-h,y1=y0+h,c=Math.cos(ang),sn=Math.sin(ang),mx=(ax+bx)/2,my=(ay+by)/2;
+  const pts=[[-w/2,y0],[w/2,y0],[w/2,y1],[-w/2,y1]].map(([x,y])=>[mx+x*c-y*sn,my+x*sn+y*c]);const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
+  if(!lblFree(Math.min(...xs),Math.min(...ys),Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys))){g.restore();return false}
+  g.translate(mx,my);g.rotate(ang);g.textAlign='center';g.textBaseline=below?'top':'bottom';haloText(g,t,0,below?off:-off,color,font);g.restore();return true}
 
 function symColor(k){if(k==='aq'||k==='problema')return'#e74c3c';if(k==='pilar')return'#4b5260';return LAYERS[SYM[k].layer].color}
 function drawSym(g,k,x,y,r){
@@ -477,14 +484,17 @@ function areaFs(v){return Math.max(9,Math.min(13,0.22*v.scale))}
 function drawArea(g,v,it){const c=AREACOL[it.cor]||AREACOL.azul;polyPath(g,v,it.pts);g.fillStyle=c.fill;g.fill();g.save();g.strokeStyle=c.stroke;g.lineWidth=1;g.setLineDash([4,3]);g.stroke();g.restore()}
 function drawAreaLabel(g,v,it){const c=centroid(it.pts),x=c.x*v.scale+v.ox,y=c.y*v.scale+v.oy,fs=areaFs(v);
   const lines=[[it.nome||'Ambiente',`700 ${fs+1}px system-ui`,'#1f2430'],[fmt(Math.abs(polyArea(it.pts)))+' m²',`600 ${fs}px system-ui`,'#2563eb']];
-  if(it.piso)lines.push(['Piso: '+it.piso+(it.estPiso?' ('+it.estPiso+')':''),`${fs-1}px system-ui`,'#4b5563']);
-  if(it.forro)lines.push(['Forro: '+it.forro+(it.estForro?' ('+it.estForro+')':''),`${fs-1}px system-ui`,'#4b5563']);
-  if(it.pd)lines.push(['PD '+fmt(it.pd)+' m',`${fs-1}px system-ui`,'#4b5563']);
-  g.save();g.textAlign='center';g.textBaseline='middle';const lh=fs+4;let yy=y-(lines.length-1)*lh/2;for(const[t,f,col]of lines){haloText(g,t,x,yy,col,f);yy+=lh}g.restore()}
+  const full=v.scale>=34;
+  if(full&&it.piso)lines.push(['Piso: '+it.piso+(it.estPiso?' ('+it.estPiso+')':''),`${fs-1}px system-ui`,'#4b5563']);
+  if(full&&it.forro)lines.push(['Forro: '+it.forro+(it.estForro?' ('+it.estForro+')':''),`${fs-1}px system-ui`,'#4b5563']);
+  if(full&&it.pd)lines.push(['PD '+fmt(it.pd)+' m',`${fs-1}px system-ui`,'#4b5563']);
+  g.save();g.textAlign='center';g.textBaseline='middle';const lh=fs+4;let yy=y-(lines.length-1)*lh/2;
+  let mw=0;for(const[t,f]of lines){g.font=f;mw=Math.max(mw,g.measureText(t).width)}if(LBL)LBL.push({x:x-mw/2,y:yy-lh/2,w:mw,h:lines.length*lh});for(const[t,f,col]of lines){haloText(g,t,x,yy,col,f);yy+=lh}g.restore()}
 function drawText(g,v,it){const fs=Math.max(9,(it.size||0.25)*v.scale);g.save();g.textAlign='left';g.textBaseline='middle';haloText(g,it.s||'',it.x*v.scale+v.ox,it.y*v.scale+v.oy,it.cor||'#1f2430',`600 ${fs}px system-ui`);g.restore()}
 function textBox(it,v){const fs=Math.max(9,(it.size||0.25)*v.scale);ctx.font=`600 ${fs}px system-ui`;const w=ctx.measureText(it.s||'').width;return{x:it.x,y:it.y-fs/2/v.scale,w:w/v.scale,h:fs/v.scale}}
 
-function drawScene(g,v,W,H,ex){
+function drawScene(g,v,W,H,ex){LBL=[];try{drawScene0(g,v,W,H,ex)}finally{LBL=null}}
+function drawScene0(g,v,W,H,ex){
   g.fillStyle='#fff';g.fillRect(0,0,W,H);if(ex!=='sheet')drawGrid(g,v,W,H,ex);drawBg(g,v);
   const its=doc.items.filter(visible);
   its.filter(i=>i.t==='area').forEach(i=>drawArea(g,v,i));
@@ -495,11 +505,13 @@ function drawScene(g,v,W,H,ex){
   its.filter(i=>i.t==='area').forEach(i=>drawAreaLabel(g,v,i));
   its.filter(i=>i.t==='seg'&&i.k==='cota').forEach(i=>drawCota(g,v,i));
   its.filter(i=>i.t==='seg'&&i.k==='corte').forEach(i=>drawCorte(g,v,i));
-  if(settings.dims){its.filter(i=>i.t==='seg'&&(SEG[i.k].wall||SEG[i.k].opening)).forEach(i=>{const L=dist(i.a,i.b);if(L*v.scale<28)return;const off=(i.e||0.15)/2*v.scale+3;const col=i.k==='construir'?'#2f9e5a':i.k==='demolir'?'#d64545':i.k==='porta'||i.k==='janela'?'#1e6fbf':'#374151';alongText(g,v,i.a,i.b,fmt(L),off,col,'600 11px system-ui')})}
+  if(settings.dims){
+    its.filter(i=>i.t==='seg'&&SEG[i.k].wall).forEach(i=>{const L=dist(i.a,i.b);if(L*v.scale<30)return;const off=(i.e||0.15)/2*v.scale+3;const col=i.k==='construir'?'#2f9e5a':i.k==='demolir'?'#d64545':'#374151';alongText(g,v,i.a,i.b,fmt(L),off,col,'600 11px system-ui')});
+    its.filter(i=>i.t==='seg'&&SEG[i.k].opening).forEach(i=>{const L=dist(i.a,i.b);if(L*v.scale<24)return;const off=(i.e||0.15)/2*v.scale+3;if(!alongText(g,v,i.a,i.b,fmt(L),off,'#1e6fbf','600 10px system-ui',true))alongText(g,v,i.a,i.b,fmt(L),off,'#1e6fbf','600 10px system-ui',false)})}
   const r=symR(v);
-  its.filter(i=>i.t==='sym').forEach(i=>{drawSymItem(g,v,i,r);if(i.obs&&settings.dims){const c=symCenter(i,v),x=c.x*v.scale+v.ox,y=c.y*v.scale+v.oy;g.save();g.textAlign='left';g.textBaseline='middle';haloText(g,i.obs,x+r+4,y,'#4b5563','11px system-ui');g.restore()}});
+  its.filter(i=>i.t==='sym').forEach(i=>{drawSymItem(g,v,i,r);if(i.obs&&settings.dims){const c=symCenter(i,v),x=c.x*v.scale+v.ox,y=c.y*v.scale+v.oy;g.save();g.font='11px system-ui';const w=g.measureText(i.obs).width;if(lblFree(x+r+4,y-7,w,14)){g.textAlign='left';g.textBaseline='middle';haloText(g,i.obs,x+r+4,y,'#4b5563','11px system-ui')}g.restore()}});
   its.filter(i=>i.t==='txt').forEach(i=>drawText(g,v,i));
-  if(settings.dims)its.filter(i=>i.t==='fix'&&i.obs).forEach(i=>{const c=fixCorners(i),yb=Math.max(...c.map(p=>p.y));g.save();g.textAlign='center';g.textBaseline='top';haloText(g,i.obs,i.x*v.scale+v.ox,yb*v.scale+v.oy+3,'#4b5563','11px system-ui');g.restore()});
+  if(settings.dims)its.filter(i=>i.t==='fix'&&i.obs).forEach(i=>{const c=fixCorners(i),yb=Math.max(...c.map(p=>p.y)),x=i.x*v.scale+v.ox,y=yb*v.scale+v.oy+3;g.save();g.font='11px system-ui';const w=g.measureText(i.obs).width;if(lblFree(x-w/2,y,w,13)){g.textAlign='center';g.textBaseline='top';haloText(g,i.obs,x,y,'#4b5563','11px system-ui')}g.restore()});
 }
 
 function render(){
@@ -584,7 +596,7 @@ function buildTools(){const n=$('#tools');n.innerHTML='';for(const t of TOOLS){i
 function setTool(t){if(pendingLen)cancelLen();finishDraw();tool=t;document.querySelectorAll('.tool').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));
   if(t==='sym')buildSymBar();else if(t==='fix')buildFixBar();
   $('#symBar').classList.toggle('show',t==='sym'||t==='fix');snapMark=null;hoverFix=null;hoverSym=null;
-  calPts=[];updBgBar();
+  calPts=[];updBgBar();if(typeof updSelBar==='function'&&doc)updSelBar();
   const h=t==='corte'?'corte':SEG[t]?(SEG[t].wall?'wall':SEG[t].opening?'opening':SEG[t].pipe?'pipe':'cota'):t;$('#hint').textContent=HINTS[h]||'';$('#hint').style.opacity=1;hintSeen=0;
   cv.style.cursor=t==='pan'?'grab':t==='select'?'default':'crosshair';req()}
 function buildFixBar(){const bar=$('#symBar');bar.innerHTML='';for(const[g,ks]of FIXGROUPS){bar.insertAdjacentHTML('beforeend',`<div class="symgrp">${g}</div>`);
