@@ -408,6 +408,14 @@ function drawSym(g,k,x,y,r){
   g.restore();
 }
 
+function wallLinks(gest){const wl=gest.it,ends=[wl.a,wl.b],pts=[],objs=[];const near=(p,q)=>dist(p,q)<1e-3;
+  for(const it of doc.items){if(it===wl)continue;
+    if(it.t==='seg'&&!SEG[it.k].opening){for(const k of['a','b'])if(ends.some(q=>near(it[k],q)))pts.push({p:it[k],ox:it[k].x,oy:it[k].y})}
+    else if(it.t==='area')it.pts.forEach(p=>{if(ends.some(q=>near(p,q)))pts.push({p,ox:p.x,oy:p.y})});
+    if(it.t==='seg'&&SEG[it.k].opening&&hostWall(it)===wl)objs.push({it,o:JSON.parse(JSON.stringify(it))});
+    if(it.t==='sym'&&it.rot!=null){const r=segDist(it,wl.a,wl.b);if(r.d<=(wl.e||0.15)/2+0.02&&r.t>0&&r.t<1)objs.push({it,o:{x:it.x,y:it.y}})}
+    if(it.t==='fix'){const r=segDist(it,wl.a,wl.b);if(r.d<=(wl.e||0.15)/2+it.d/2+0.03&&r.t>0&&r.t<1)objs.push({it,o:{x:it.x,y:it.y}})}}
+  gest.links=pts;gest.objs=objs;const G=geom(wl.a,wl.b);gest.wn=pts.length?{x:G.nx,y:G.ny}:null}
 function hostWall(o){let best=null,bd=1e9;for(const w of doc.items){if(w.t!=='seg'||!SEG[w.k].wall)continue;const G=geom(w.a,w.b),we=(w.e||0.15)/2+0.06;
   const da=Math.abs((o.a.x-w.a.x)*G.nx+(o.a.y-w.a.y)*G.ny),db=Math.abs((o.b.x-w.a.x)*G.nx+(o.b.y-w.a.y)*G.ny);if(da>we||db>we)continue;
   const t0=(o.a.x-w.a.x)*G.ux+(o.a.y-w.a.y)*G.uy,t1=(o.b.x-w.a.x)*G.ux+(o.b.y-w.a.y)*G.uy;if(Math.max(t0,t1)<-0.02||Math.min(t0,t1)>G.L+0.02)continue;if(da+db<bd){bd=da+db;best=w}}return best}
@@ -572,17 +580,24 @@ function snapPoint(raw,o={}){
   if(settings.snap){p.x=rnd(p.x);p.y=rnd(p.y)}
   return{p,type:'grid'};
 }
-function hitTest(w){
-  const tol=9/view.scale,its=doc.items.filter(visible).slice().reverse();
-  const r=(symR(view)+3)/view.scale;
-  for(const it of its)if(it.t==='sym'&&dist(symCenter(it,view),w)<r)return it;
-  for(const it of its)if(it.t==='txt'){const b=textBox(it,view);if(w.x>=b.x-tol&&w.x<=b.x+b.w+tol&&w.y>=b.y-tol&&w.y<=b.y+b.h+tol)return it}
-  for(const it of its)if(it.t==='fix'){const l=fixLocal(it,w);if(Math.abs(l.x)<=it.w/2+tol&&Math.abs(l.y)<=it.d/2+tol)return it}
-  for(const pass of[i=>SEG[i.k].opening,i=>SEG[i.k].pipe||i.k==='cota'||i.k==='corte',i=>SEG[i.k].wall])for(const it of its)if(it.t==='seg'&&pass(it)&&segDist(w,it.a,it.b).d<Math.max(tol,(it.e||0)/2))return it;
+function itemHit(it,w,px){const tol=px/view.scale;if(!visible(it))return false;
+  if(it.t==='sym')return dist(symCenter(it,view),w)<(symR(view)+px-6)/view.scale;
+  if(it.t==='txt'){const b=textBox(it,view);return w.x>=b.x-tol&&w.x<=b.x+b.w+tol&&w.y>=b.y-tol&&w.y<=b.y+b.h+tol}
+  if(it.t==='fix'){const l=fixLocal(it,w);return Math.abs(l.x)<=it.w/2+tol&&Math.abs(l.y)<=it.d/2+tol}
+  if(it.t==='seg')return segDist(w,it.a,it.b).d<Math.max(tol,(it.e||0)/2+tol*0.5);
+  if(it.t==='area')return inPoly(w,it.pts);return false}
+function hitTest(w,px=9){const S=view.scale,its=doc.items.filter(visible).slice().reverse();let best=null,bs=1e9;
+  const cand=(it,d,pri)=>{const sc=d+pri*0.5;if(d<=px&&sc<bs){bs=sc;best=it}};
+  for(const it of its){
+    if(it.t==='sym')cand(it,Math.max(0,dist(symCenter(it,view),w)*S-symR(view)),0);
+    else if(it.t==='txt'){const b=textBox(it,view),dx=Math.max(b.x-w.x,0,w.x-(b.x+b.w)),dy=Math.max(b.y-w.y,0,w.y-(b.y+b.h));cand(it,Math.hypot(dx,dy)*S,1)}
+    else if(it.t==='fix'){const l=fixLocal(it,w),dx=Math.max(0,Math.abs(l.x)-it.w/2),dy=Math.max(0,Math.abs(l.y)-it.d/2);cand(it,Math.hypot(dx,dy)*S,2)}
+    else if(it.t==='seg'){const d=Math.max(0,segDist(w,it.a,it.b).d-(it.e||0)/2)*S;cand(it,d,SEG[it.k].opening?0:SEG[it.k].wall?3:2)}}
+  if(best)return best;
   for(const it of its)if(it.t==='area'&&inPoly(w,it.pts))return it;
   return null;
 }
-function hitHandle(w){const it=sel&&byId(sel);if(!it)return null;const tol=12/view.scale;const pts=it.t==='seg'?[it.a,it.b]:it.t==='area'?it.pts:[];for(const p of pts)if(dist(p,w)<tol)return{it,p};return null}
+function hitHandle(w,px=12){const it=sel&&byId(sel);if(!it)return null;const tol=(it.t==='seg'?Math.min(px,Math.max(8,dist(it.a,it.b)*view.scale*0.28)):px)/view.scale;const pts=it.t==='seg'?[it.a,it.b]:it.t==='area'?it.pts:[];for(const p of pts)if(dist(p,w)<tol)return{it,p};return null}
 
 // ================= Undo / edit =================
 function snapshot(){return JSON.stringify(doc.items)}
@@ -680,8 +695,9 @@ cv.addEventListener('pointerdown',e=>{
   if(e.button===1||e.button===2||tool==='pan'||spaceDown){gest={type:'pan',sx,sy,ox:view.ox,oy:view.oy};cv.style.cursor='grabbing';return}
   if(tool==='bgmove'&&doc.bg){gest={type:'bgmove',sx,sy,x0:doc.bg.x,y0:doc.bg.y};return}
   gest={type:'pending',sx,sy,w,ptype:e.pointerType};
-  if(tool!=='select'&&sel&&!draw&&!pendingLen){const h=hitHandle(w);if(h){gest.target='handle';gest.h=h;gest.selMode=true}else{const hit=hitTest(w);if(hit&&hit.id===sel){gest.target='move';gest.it=hit;gest.selMode=true}}}
-  if(tool==='select'){const h=hitHandle(w);if(h){gest.target='handle';gest.h=h}else{const it=hitTest(w);if(it){if(sel!==it.id){sel=it.id;renderPanel()}gest.target='move';gest.it=it}else{gest.target='pan';if(sel){sel=null;renderPanel()}}}req()}
+  const TP=e.pointerType==='mouse'?9:22,HP=e.pointerType==='mouse'?12:24,selIt=sel&&byId(sel);
+  if(tool!=='select'&&selIt&&!draw&&!pendingLen){const h=hitHandle(w,HP);if(h){gest.target='handle';gest.h=h;gest.selMode=true}else if(itemHit(selIt,w,TP)&&selIt.t!=='area'){gest.target='move';gest.it=selIt;gest.selMode=true}}
+  if(tool==='select'){const h=hitHandle(w,HP);if(h){gest.target='handle';gest.h=h}else{const it=(selIt&&selIt.t!=='area'&&itemHit(selIt,w,TP))?selIt:hitTest(w,TP);if(it){if(sel!==it.id){sel=it.id;renderPanel()}gest.target='move';gest.it=it}else{gest.target='pan';if(sel){sel=null;renderPanel()}}}req()}
 });
 cv.addEventListener('pointermove',e=>{
   if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,{x:e.offsetX,y:e.offsetY});
@@ -691,7 +707,8 @@ cv.addEventListener('pointermove',e=>{
     const s=Math.max(5,Math.min(800,gest.s0*d/gest.d0));const wx=(gest.m0.x-gest.ox0)/gest.s0,wy=(gest.m0.y-gest.oy0)/gest.s0;view.scale=s;view.ox=m.x-wx*s;view.oy=m.y-wy*s;req();return}
   if(gest&&gest.type==='pending'&&Math.hypot(sx-gest.sx,sy-gest.sy)>6){
     if(tool==='select'||gest.selMode){
-      if(gest.target==='move'){pushUndo();gest.type='move';gest.orig=JSON.parse(JSON.stringify(gest.it));if(gest.it.t==='seg'&&SEG[gest.it.k].opening)gest.host=hostWall(gest.it)}
+      if(gest.target==='move'){pushUndo();gest.type='move';gest.orig=JSON.parse(JSON.stringify(gest.it));if(gest.it.t==='seg'&&SEG[gest.it.k].opening)gest.host=hostWall(gest.it);
+        if(gest.it.t==='seg'&&SEG[gest.it.k].wall)wallLinks(gest)}
       else if(gest.target==='handle'){pushUndo();const h=gest.h,pts=new Set([h.p]);if(h.it.t==='seg'&&SEG[h.it.k].opening)gest.host=hostWall(h.it);if(h.it.t==='seg')for(const it of doc.items)if(it.t==='seg'&&it!==h.it)for(const q of[it.a,it.b])if(dist(q,h.p)<1e-6)pts.add(q);gest.type='handle';gest.pts=[...pts];gest.ex=new Set(gest.pts)}
       else{gest.type='pan';gest.ox=view.ox;gest.oy=view.oy}
     }else if((SEG[tool])&&!draw){const s=snapPoint(gest.w,{onWall:SEG[tool].opening});gest.type='dragdraw';draw={kind:tool,pts:[s.p],wall:s.type==='on'?s.wall:null};updDrawBar()}
@@ -703,6 +720,10 @@ cv.addEventListener('pointermove',e=>{
   if(tool==='apagar'&&!gest){const it=hitTest(raw);cv.style.cursor=it?'pointer':'crosshair';return}
   if(gest&&gest.type==='pan'){view.ox=gest.ox+(sx-gest.sx);view.oy=gest.oy+(sy-gest.sy);req();return}
   if(gest&&gest.type==='move'){let dx=raw.x-gest.w.x,dy=raw.y-gest.w.y;if(settings.snap){dx=Math.round(dx/0.05)*0.05;dy=Math.round(dy/0.05)*0.05}const it=gest.it,o=gest.orig;
+    if(gest.links){if(gest.wn){let t=(raw.x-gest.w.x)*gest.wn.x+(raw.y-gest.w.y)*gest.wn.y;if(settings.snap)t=Math.round(t/0.05)*0.05;dx=gest.wn.x*t;dy=gest.wn.y*t}
+      it.a={x:o.a.x+dx,y:o.a.y+dy};it.b={x:o.b.x+dx,y:o.b.y+dy};gest.links.forEach(l=>{l.p.x=l.ox+dx;l.p.y=l.oy+dy});
+      gest.objs.forEach(({it:x,o:oo})=>{if(x.t==='seg'){x.a={x:oo.a.x+dx,y:oo.a.y+dy};x.b={x:oo.b.x+dx,y:oo.b.y+dy}}else{x.x=oo.x+dx;x.y=oo.y+dy}});
+      if(gest.wn){const d=Math.hypot(dx,dy);toast('Movendo parede: '+fmt(d)+' m')}req();return}
     if(it.t==='seg'&&gest.host){const G=geom(gest.host.a,gest.host.b);let t=(raw.x-gest.w.x)*G.ux+(raw.y-gest.w.y)*G.uy;if(settings.snap)t=Math.round(t/0.05)*0.05;
       const ta=(o.a.x-gest.host.a.x)*G.ux+(o.a.y-gest.host.a.y)*G.uy,tb=(o.b.x-gest.host.a.x)*G.ux+(o.b.y-gest.host.a.y)*G.uy;t=Math.max(-Math.min(ta,tb),Math.min(G.L-Math.max(ta,tb),t));
       it.a={x:o.a.x+G.ux*t,y:o.a.y+G.uy*t};it.b={x:o.b.x+G.ux*t,y:o.b.y+G.uy*t};req();return}
@@ -742,7 +763,7 @@ cv.addEventListener('pointerup',endPtr);cv.addEventListener('pointercancel',endP
 cv.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse'&&!gest){hover=null;snapMark=null;req()}});
 function onTap(raw,e){
   if(tool==='bgcal'){calTap(raw);return}
-  if(tool==='apagar'){const it=hitTest(raw);if(it){pushUndo();doc.items=doc.items.filter(i=>i!==it);if(sel===it.id)sel=null;changed();renderPanel()}return}
+  if(tool==='apagar'){const it=hitTest(raw,e.pointerType==='mouse'?9:20);if(it){pushUndo();doc.items=doc.items.filter(i=>i!==it);if(sel===it.id)sel=null;changed();renderPanel()}return}
   if(tool==='select'||tool==='pan'||tool==='bgmove'||tool==='apagar')return;
   if(tool==='fix'){const p=fixPlace(raw,fixKind),F=FIX[fixKind];const it=addItem({t:'fix',k:fixKind,x:p.x,y:p.y,w:p.w,d:p.d,rot:p.rot,h:F.h,mat:'',acao:'',obs:''});sel=it.id;hoverFix=null;renderPanel();return}
   if(tool==='sym'){const p=symPlace(raw,symKind);const it=addItem({t:'sym',k:symKind,x:p.x,y:p.y,rot:p.rot,we:p.we,h:SYM[symKind].h,obs:''});sel=it.id;hoverSym=null;renderPanel();return}
