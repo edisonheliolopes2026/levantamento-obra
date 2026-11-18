@@ -40,6 +40,7 @@ header{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#fff;
 #zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:4px}
 #zoom button{width:36px;height:36px;border-radius:8px;border:1px solid var(--bd);background:#fff;font-size:18px;display:flex;align-items:center;justify-content:center}
 #zoom svg{width:18px;height:18px}
+#zLock.on{background:#2563eb;border-color:#2563eb;color:#fff}
 #drawBar{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:#fff;border:1px solid var(--bd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.08);padding:6px 8px;display:none;align-items:center;gap:6px;font-size:13px;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 20px)}
 #drawBar.show{display:flex}
 #drawBar.noLen .lenonly{display:none!important}
@@ -179,6 +180,7 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
       <div id="lenPop"><div class="lp-t" id="lpTitle">Comprimento</div><div class="lp-r"><input id="lpIn" type="text" inputmode="decimal" autocomplete="off"><span>m</span><button class="hbtn pri" id="lpOk">OK</button><button class="hbtn" id="lpNo">Cancelar</button></div><div class="lp-h">Digite a medida real ou toque OK para manter a arrastada</div></div>
       <div id="hint"></div>
       <div id="zoom">
+        <button id="zLock" title="Travar o fundo"></button>
         <button id="zIn" title="Aproximar">+</button>
         <button id="zOut" title="Afastar">−</button>
         <button id="zFit" title="Ajustar à tela"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
@@ -341,7 +343,7 @@ let undoStack=[],redoStack=[];
 let bgImg=null,bgData=null,calPts=[];let pendingLen=null;
 const lsGet=(k)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}};
-const settings=Object.assign({snap:true,ortho:true,dims:true},lsGet('lev_settings')||{});
+const settings=Object.assign({snap:true,ortho:true,dims:true,lockView:false},lsGet('lev_settings')||{});
 const layerOn={};Object.keys(LAYERS).forEach(k=>layerOn[k]=true);
 let panelTab='props';
 
@@ -710,8 +712,10 @@ cv.addEventListener('pointermove',e=>{
       if(gest.target==='move'){pushUndo();gest.type='move';gest.orig=JSON.parse(JSON.stringify(gest.it));if(gest.it.t==='seg'&&SEG[gest.it.k].opening)gest.host=hostWall(gest.it);
         if(gest.it.t==='seg'&&SEG[gest.it.k].wall)wallLinks(gest)}
       else if(gest.target==='handle'){pushUndo();const h=gest.h,pts=new Set([h.p]);if(h.it.t==='seg'&&SEG[h.it.k].opening)gest.host=hostWall(h.it);if(h.it.t==='seg')for(const it of doc.items)if(it.t==='seg'&&it!==h.it)for(const q of[it.a,it.b])if(dist(q,h.p)<1e-6)pts.add(q);gest.type='handle';gest.pts=[...pts];gest.ex=new Set(gest.pts)}
+      else if(settings.lockView)gest.type='none';
       else{gest.type='pan';gest.ox=view.ox;gest.oy=view.oy}
     }else if((SEG[tool])&&!draw){const s=snapPoint(gest.w,{onWall:SEG[tool].opening});gest.type='dragdraw';draw={kind:tool,pts:[s.p],wall:s.type==='on'?s.wall:null};updDrawBar()}
+    else if(settings.lockView)gest.type='none';
     else{gest.type='pan';gest.ox=view.ox;gest.oy=view.oy}
   }
   if(gest&&gest.type==='bgmove'){doc.bg.x=gest.x0+(sx-gest.sx)/view.scale;doc.bg.y=gest.y0+(sy-gest.sy)/view.scale;req();return}
@@ -1345,6 +1349,9 @@ $('#bgBarDone').onclick=()=>setTool('select');$('#bgBarUndo').onclick=()=>{calPt
 $('#bgIn').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importBg(f)};
 $('#bgCamIn').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importBg(f)};
 $('#bUndo').onclick=undo;$('#bRedo').onclick=redo;
+const LOCKI={on:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',off:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>'};
+function updLock(){const b=$('#zLock');b.classList.toggle('on',!!settings.lockView);b.innerHTML=settings.lockView?LOCKI.on:LOCKI.off;b.title=settings.lockView?'Fundo travado — toque para destravar':'Travar o fundo'}
+$('#zLock').onclick=()=>{settings.lockView=!settings.lockView;lsSet('lev_settings',settings);updLock();toast(settings.lockView?'Fundo travado: arrastar com um dedo não move mais a tela. Use dois dedos para mover ou dar zoom.':'Fundo destravado: arraste o vazio para mover a tela.')};updLock();
 $('#zIn').onclick=()=>zoomAt(CW/2,CH/2,1.3);$('#zOut').onclick=()=>zoomAt(CW/2,CH/2,1/1.3);$('#zFit').onclick=fit;
 $('#dbDone').onclick=()=>finishDraw();$('#dbCancel').onclick=()=>cancelDraw();
 document.querySelectorAll('#drawBar .arr').forEach(b=>b.onclick=()=>typedLen(b.dataset.dir));
