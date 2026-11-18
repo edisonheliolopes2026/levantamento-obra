@@ -42,6 +42,7 @@ header{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#fff;
 #zoom svg{width:18px;height:18px}
 #drawBar{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:#fff;border:1px solid var(--bd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.08);padding:6px 8px;display:none;align-items:center;gap:6px;font-size:13px;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 20px)}
 #drawBar.show{display:flex}
+#drawBar.noLen .lenonly{display:none!important}
 #drawBar input{width:74px;padding:5px 7px;border:1px solid var(--bd);border-radius:6px}
 #drawBar .arr{width:32px;height:32px;padding:0;justify-content:center}
 #bgBar{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:#fff;border:1px solid var(--bd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.08);padding:6px 8px;display:none;align-items:center;gap:8px;font-size:13px;max-width:calc(100% - 20px)}
@@ -129,6 +130,10 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
   #coords{display:none}
   #selBar{left:8px;right:8px;top:8px;bottom:auto;transform:none;max-width:none;justify-content:space-between}
   #selBar.low{top:auto;bottom:8px;right:56px}
+  #drawBar{top:auto;bottom:8px;left:8px;right:56px;transform:none;max-width:none;justify-content:flex-start;gap:4px;padding:6px}
+  #drawBar .arr{width:32px;height:32px}
+  #dbLabel{display:none}
+  #drawBar input{width:64px}
   #selBar .nm{display:none}
   #selBar .hbtn{flex:1;justify-content:center;padding:9px 6px}
   #selBar [data-sb=x]{flex:0 0 38px}
@@ -159,13 +164,13 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
       <canvas id="cv"></canvas>
       <div id="symBar"></div>
       <div id="drawBar">
-        <span id="dbLabel">Comprimento</span>
+        <span class="lenonly" style="display:contents"><span id="dbLabel">Comprimento</span>
         <input id="dbLen" type="text" inputmode="decimal" placeholder="ex: 3,45">
         <span>m</span>
         <button class="hbtn arr" data-dir="r" title="Para a direita">→</button>
         <button class="hbtn arr" data-dir="d" title="Para baixo">↓</button>
         <button class="hbtn arr" data-dir="l" title="Para a esquerda">←</button>
-        <button class="hbtn arr" data-dir="u" title="Para cima">↑</button>
+        <button class="hbtn arr" data-dir="u" title="Para cima">↑</button></span>
         <button class="hbtn pri" id="dbDone">Concluir</button>
         <button class="hbtn" id="dbCancel">Cancelar</button>
       </div>
@@ -311,7 +316,7 @@ const ICON={
 };
 const TOOLS=[['select','Selecionar'],['pan','Mover'],['apagar','Apagar'],'|',['parede','Existente'],['construir','Construir'],['demolir','Demolir'],['porta','Porta'],['janela','Janela'],'|',['area','Ambiente'],['sym','Pontos'],['fix','Louças'],['eletroduto','Eletrod.'],['agua','Água'],['esgoto','Esgoto'],'|',['cota','Cota'],['corte','Corte'],['text','Texto']];
 const HINTS={
-  select:'Toque num elemento para editar ou excluir. Arraste o fundo para mover a vista. Arraste as alças azuis para ajustar pontas.',
+  select:'Toque num elemento para editar ou excluir; arraste-o para mover. Arraste o fundo para mover a vista. Arraste as alças azuis para ajustar pontas.',
   apagar:'Toque em qualquer elemento (parede, ponto, ambiente…) para apagá-lo. Errou? Use o botão desfazer no topo.',
   pan:'Arraste para mover a vista. Pinça ou roda do mouse para zoom.',
   wall:'Arraste de um ponto a outro e digite a medida — ou toque no início e depois em cada canto (ou digite o comprimento e escolha a direção). Toque 2× no último ponto ou em Concluir.',
@@ -403,6 +408,9 @@ function drawSym(g,k,x,y,r){
   g.restore();
 }
 
+function hostWall(o){let best=null,bd=1e9;for(const w of doc.items){if(w.t!=='seg'||!SEG[w.k].wall)continue;const G=geom(w.a,w.b),we=(w.e||0.15)/2+0.06;
+  const da=Math.abs((o.a.x-w.a.x)*G.nx+(o.a.y-w.a.y)*G.ny),db=Math.abs((o.b.x-w.a.x)*G.nx+(o.b.y-w.a.y)*G.ny);if(da>we||db>we)continue;
+  const t0=(o.a.x-w.a.x)*G.ux+(o.a.y-w.a.y)*G.uy,t1=(o.b.x-w.a.x)*G.ux+(o.b.y-w.a.y)*G.uy;if(Math.max(t0,t1)<-0.02||Math.min(t0,t1)>G.L+0.02)continue;if(da+db<bd){bd=da+db;best=w}}return best}
 function symOut(i){const a=i.rot*Math.PI/180;return{x:-Math.sin(a),y:Math.cos(a)}}
 function symCenter(i,v){if(i.rot==null)return{x:i.x,y:i.y};const o=symOut(i),off=symR(v)*1.05/v.scale;return{x:i.x+o.x*off,y:i.y+o.y*off}}
 function drawSymItem(g,v,i,r,alpha){const c=symCenter(i,v),x=c.x*v.scale+v.ox,y=c.y*v.scale+v.oy;g.save();if(alpha)g.globalAlpha=alpha;
@@ -619,7 +627,8 @@ function lineCanvas(kind,w=34,h=24,dd){const c=document.createElement('canvas'),
 // ================= Drawing flow =================
 function finishDraw(){if(!draw)return;if(draw.kind==='area'&&draw.pts.length>=3)closeArea();draw=null;updDrawBar();req()}
 function cancelDraw(){draw=null;updDrawBar();req()}
-function updDrawBar(){const b=$('#drawBar');const on=!!draw&&!pendingLen;b.classList.toggle('show',on);if(!on)return;
+function updDrawBar(){const b=$('#drawBar');const on=!!draw&&!pendingLen;b.classList.toggle('show',on);$('#hint').style.visibility=on?'hidden':'';if(!on)return;
+  b.classList.toggle('noLen',!!(SEG[draw.kind]&&SEG[draw.kind].opening));
   const isArea=draw.kind==='area';$('#dbLabel').textContent=isArea?'Lado':'Comprimento';$('#dbDone').textContent=isArea?'Fechar ambiente':'Concluir';
   $('#symBar').classList.toggle('show',false)}
 function closeArea(){const pts=draw.pts.map(p=>({x:p.x,y:p.y}));const n=doc.items.filter(i=>i.t==='area').length+1;const it=addItem({t:'area',pts,nome:'Ambiente '+n,piso:'',forro:'',pd:2.8,cor:'azul'});sel=it.id;draw=null;updDrawBar();renderPanel();openPanelMobile()}
@@ -671,6 +680,7 @@ cv.addEventListener('pointerdown',e=>{
   if(e.button===1||e.button===2||tool==='pan'||spaceDown){gest={type:'pan',sx,sy,ox:view.ox,oy:view.oy};cv.style.cursor='grabbing';return}
   if(tool==='bgmove'&&doc.bg){gest={type:'bgmove',sx,sy,x0:doc.bg.x,y0:doc.bg.y};return}
   gest={type:'pending',sx,sy,w,ptype:e.pointerType};
+  if(tool!=='select'&&sel&&!draw&&!pendingLen){const h=hitHandle(w);if(h){gest.target='handle';gest.h=h;gest.selMode=true}else{const hit=hitTest(w);if(hit&&hit.id===sel){gest.target='move';gest.it=hit;gest.selMode=true}}}
   if(tool==='select'){const h=hitHandle(w);if(h){gest.target='handle';gest.h=h}else{const it=hitTest(w);if(it){if(sel!==it.id){sel=it.id;renderPanel()}gest.target='move';gest.it=it}else{gest.target='pan';if(sel){sel=null;renderPanel()}}}req()}
 });
 cv.addEventListener('pointermove',e=>{
@@ -680,9 +690,9 @@ cv.addEventListener('pointermove',e=>{
   if(gest&&gest.type==='pinch'){if(ptrs.size<2)return;const[p1,p2]=[...ptrs.values()];const d=Math.hypot(p1.x-p2.x,p1.y-p2.y),m={x:(p1.x+p2.x)/2,y:(p1.y+p2.y)/2};
     const s=Math.max(5,Math.min(800,gest.s0*d/gest.d0));const wx=(gest.m0.x-gest.ox0)/gest.s0,wy=(gest.m0.y-gest.oy0)/gest.s0;view.scale=s;view.ox=m.x-wx*s;view.oy=m.y-wy*s;req();return}
   if(gest&&gest.type==='pending'&&Math.hypot(sx-gest.sx,sy-gest.sy)>6){
-    if(tool==='select'){
-      if(gest.target==='move'){pushUndo();gest.type='move';gest.orig=JSON.parse(JSON.stringify(gest.it))}
-      else if(gest.target==='handle'){pushUndo();const h=gest.h,pts=new Set([h.p]);if(h.it.t==='seg')for(const it of doc.items)if(it.t==='seg'&&it!==h.it)for(const q of[it.a,it.b])if(dist(q,h.p)<1e-6)pts.add(q);gest.type='handle';gest.pts=[...pts];gest.ex=new Set(gest.pts)}
+    if(tool==='select'||gest.selMode){
+      if(gest.target==='move'){pushUndo();gest.type='move';gest.orig=JSON.parse(JSON.stringify(gest.it));if(gest.it.t==='seg'&&SEG[gest.it.k].opening)gest.host=hostWall(gest.it)}
+      else if(gest.target==='handle'){pushUndo();const h=gest.h,pts=new Set([h.p]);if(h.it.t==='seg'&&SEG[h.it.k].opening)gest.host=hostWall(h.it);if(h.it.t==='seg')for(const it of doc.items)if(it.t==='seg'&&it!==h.it)for(const q of[it.a,it.b])if(dist(q,h.p)<1e-6)pts.add(q);gest.type='handle';gest.pts=[...pts];gest.ex=new Set(gest.pts)}
       else{gest.type='pan';gest.ox=view.ox;gest.oy=view.oy}
     }else if((SEG[tool])&&!draw){const s=snapPoint(gest.w,{onWall:SEG[tool].opening});gest.type='dragdraw';draw={kind:tool,pts:[s.p],wall:s.type==='on'?s.wall:null};updDrawBar()}
     else{gest.type='pan';gest.ox=view.ox;gest.oy=view.oy}
@@ -693,10 +703,14 @@ cv.addEventListener('pointermove',e=>{
   if(tool==='apagar'&&!gest){const it=hitTest(raw);cv.style.cursor=it?'pointer':'crosshair';return}
   if(gest&&gest.type==='pan'){view.ox=gest.ox+(sx-gest.sx);view.oy=gest.oy+(sy-gest.sy);req();return}
   if(gest&&gest.type==='move'){let dx=raw.x-gest.w.x,dy=raw.y-gest.w.y;if(settings.snap){dx=Math.round(dx/0.05)*0.05;dy=Math.round(dy/0.05)*0.05}const it=gest.it,o=gest.orig;
+    if(it.t==='seg'&&gest.host){const G=geom(gest.host.a,gest.host.b);let t=(raw.x-gest.w.x)*G.ux+(raw.y-gest.w.y)*G.uy;if(settings.snap)t=Math.round(t/0.05)*0.05;
+      const ta=(o.a.x-gest.host.a.x)*G.ux+(o.a.y-gest.host.a.y)*G.uy,tb=(o.b.x-gest.host.a.x)*G.ux+(o.b.y-gest.host.a.y)*G.uy;t=Math.max(-Math.min(ta,tb),Math.min(G.L-Math.max(ta,tb),t));
+      it.a={x:o.a.x+G.ux*t,y:o.a.y+G.uy*t};it.b={x:o.b.x+G.ux*t,y:o.b.y+G.uy*t};req();return}
     if(it.t==='sym'&&WALLSYM.has(it.k)){const c=symCenter(o,view),p=symPlace({x:c.x+(raw.x-gest.w.x),y:c.y+(raw.y-gest.w.y)},it.k);it.x=p.x;it.y=p.y;it.rot=p.rot;it.we=p.we;req();return}
     if(it.t==='seg'){it.a={x:o.a.x+dx,y:o.a.y+dy};it.b={x:o.b.x+dx,y:o.b.y+dy}}else if(it.t==='area')it.pts=o.pts.map(p=>({x:p.x+dx,y:p.y+dy}));else{it.x=o.x+dx;it.y=o.y+dy}req();return}
   if(gest&&gest.type==='handle'){const it=gest.h.it;const s=snapPoint(raw,{excludePts:gest.ex});let p=s.p;
-    if(s.type!=='end'&&settings.ortho&&it.t==='seg'){const other=gest.h.p===it.a?it.b:it.a;const r2=snapPoint(raw,{from:other,excludePts:gest.ex});p=r2.p}
+    if(gest.host){const other=gest.h.p===it.a?it.b:it.a;p=snapPoint(raw,{from:other,alongWall:gest.host}).p}
+    else if(s.type!=='end'&&settings.ortho&&it.t==='seg'){const other=gest.h.p===it.a?it.b:it.a;const r2=snapPoint(raw,{from:other,excludePts:gest.ex});p=r2.p}
     gest.pts.forEach(q=>{q.x=p.x;q.y=p.y});snapMark=s;req();return}
   // hover preview
   if(pendingLen)return;
@@ -810,6 +824,8 @@ function renderPanel(){updSelBar();const b=$('#pbody');
     else if(s.opening){h+=fld('Tipo',`<select data-f="k"><option value="porta"${it.k==='porta'?' selected':''}>Porta</option><option value="janela"${it.k==='janela'?' selected':''}>Janela</option></select>`);
       h+=`<div class="row">${fld('Largura (m)',num('_len',L))}${fld('Altura (m)',num('alt',it.alt))}</div>`;
       if(it.k==='janela')h+=fld('Peitoril (m)',num('peit',it.peit));
+      const hw=hostWall(it);if(hw){const G=geom(hw.a,hw.b),ta=(it.a.x-hw.a.x)*G.ux+(it.a.y-hw.a.y)*G.uy,tb=(it.b.x-hw.a.x)*G.ux+(it.b.y-hw.a.y)*G.uy;
+        h+=`<div class="row">${fld('Distância de um canto (m)',num('_off',Math.min(ta,tb)))}${fld('do outro canto (m)',num('_off2',G.L-Math.max(ta,tb)))}</div>`}
       h+=fld('Material / tipo',inp('mat',it.mat,'text','placeholder="ex: madeira, alumínio, de correr"'));
       if(it.k==='porta')h+=`<div class="acts" style="margin-bottom:10px"><button class="hbtn" id="flipDoor">Inverter abertura</button><button class="hbtn" id="swapDoor">Trocar lado da dobradiça</button></div>`;
       h+=fld('Situação',`<select data-f="acao">${opts(['','Manter','Trocar','Remover','Nova (a abrir)'],it.acao||'')}</select>`)}
@@ -852,7 +868,10 @@ function renderPanel(){updSelBar();const b=$('#pbody');
   b.querySelectorAll('[data-f]').forEach(el=>{
     const apply=()=>{if(snap0===null)snap0=snapshot();const f=el.dataset.f;let val=el.value;
       if(el.dataset.num){val=parseNum(val);if(isNaN(val))return}
-      if(f==='_len'){if(!(val>0))return;const{ux,uy}=geom(it.a,it.b);it.b={x:it.a.x+ux*val,y:it.a.y+uy*val}}
+      if(f==='_off'||f==='_off2'){const hw=hostWall(it);if(!hw||!(val>=0))return;const G=geom(hw.a,hw.b),ta=(it.a.x-hw.a.x)*G.ux+(it.a.y-hw.a.y)*G.uy,tb=(it.b.x-hw.a.x)*G.ux+(it.b.y-hw.a.y)*G.uy,w=Math.abs(tb-ta);
+        let sh=f==='_off'?val-Math.min(ta,tb):(G.L-val)-Math.max(ta,tb);sh=Math.max(-Math.min(ta,tb),Math.min(G.L-Math.max(ta,tb),sh));it.a={x:it.a.x+G.ux*sh,y:it.a.y+G.uy*sh};it.b={x:it.b.x+G.ux*sh,y:it.b.y+G.uy*sh};
+        const o2=b.querySelector(f==='_off'?'[data-f="_off2"]':'[data-f="_off"]');if(o2)o2.value=fmt(f==='_off'?G.L-Math.max(ta,tb)-sh:Math.min(ta,tb)+sh)}
+      else if(f==='_len'){if(!(val>0))return;const{ux,uy}=geom(it.a,it.b);it.b={x:it.a.x+ux*val,y:it.a.y+uy*val}}
       else if(f==='qtd')it.qtd=Math.max(1,parseInt(val)||1);
       else it[f]=val;
       if(f==='e'&&SEG[it.k]&&SEG[it.k].wall)lastWallE[it.k]=val;
