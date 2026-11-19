@@ -36,8 +36,9 @@ header{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#fff;
 .tsep{width:34px;height:1px;background:var(--bd);margin:3px 0;flex-shrink:0}
 #stage{flex:1;position:relative;min-width:0;overflow:hidden}
 #cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
-#hint{transition:opacity .3s;cursor:pointer;position:absolute;left:10px;bottom:10px;max-width:calc(100% - 140px);background:rgba(31,36,48,.82);color:#fff;font-size:12px;padding:6px 26px 6px 10px;border-radius:8px}
-#hint::after{content:'✕';position:absolute;right:8px;top:5px;opacity:.7}
+#hint{transition:opacity .3s;position:absolute;left:10px;bottom:10px;max-width:calc(100% - 140px);background:rgba(31,36,48,.82);color:#fff;font-size:12px;padding:6px 30px 6px 10px;border-radius:8px;pointer-events:none;z-index:3}
+#hintX{position:absolute;right:2px;top:2px;width:26px;height:26px;border:none;background:none;color:#fff;opacity:.8;font-size:13px;pointer-events:auto;cursor:pointer}
+#selBar,#drawBar,#lenPop,#bgBar{z-index:6}
 #zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:4px}
 #zoom button{width:36px;height:36px;border-radius:8px;border:1px solid var(--bd);background:#fff;font-size:18px;display:flex;align-items:center;justify-content:center}
 #zoom svg{width:18px;height:18px}
@@ -194,7 +195,7 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
       <div id="bgBar"><span id="bgBarTxt"></span><button class="hbtn" id="bgBarUndo" style="display:none">Recomeçar</button><button class="hbtn pri" id="bgBarDone">Pronto</button></div>
       <div id="selBar"></div>
       <div id="lenPop"><div class="lp-t" id="lpTitle">Comprimento</div><div class="lp-r"><input id="lpIn" type="text" inputmode="decimal" autocomplete="off"><span>m</span><button class="hbtn pri" id="lpOk">OK</button><button class="hbtn" id="lpNo">Cancelar</button></div><div class="lp-h">Digite a medida real ou toque OK para manter a arrastada</div></div>
-      <div id="hint"></div>
+      <div id="hint"><span id="hintTxt"></span><button id="hintX" title="Fechar dica">✕</button></div>
       <div id="zoom">
         <button id="zLock" title="Travar o fundo"></button>
         <button id="zIn" title="Aproximar">+</button>
@@ -699,7 +700,7 @@ function setTool(t){if(pendingLen)cancelLen();finishDraw();tool=t;document.query
   if(t==='sym')buildSymBar();else if(t==='fix')buildFixBar();else if(t==='room')buildRoomBar();if(t==='sym'||t==='fix'||t==='room')addPalClose();
   $('#symBar').classList.toggle('show',t==='sym'||t==='fix'||t==='room');snapMark=null;hoverFix=null;hoverSym=null;hoverRoom=null;
   calPts=[];updBgBar();if(typeof updSelBar==='function'&&doc)updSelBar();
-  const h=t==='corte'?'corte':SEG[t]?(SEG[t].wall?'wall':SEG[t].opening?'opening':SEG[t].pipe?'pipe':'cota'):t;$('#hint').textContent=HINTS[h]||'';$('#hint').style.opacity=HINTS[h]?1:0;$('#hint').style.visibility='';hintSeen=0;
+  const h=t==='corte'?'corte':SEG[t]?(SEG[t].wall?'wall':SEG[t].opening?'opening':SEG[t].pipe?'pipe':'cota'):t;$('#hintTxt').textContent=HINTS[h]||'';$('#hint').style.opacity=HINTS[h]?1:0;$('#hint').style.visibility='';hintSeen=0;
   cv.style.cursor=t==='pan'?'grab':t==='select'?'default':'crosshair';req()}
 function roomCanvas(k,w=34,h=30,dd){const c=document.createElement('canvas'),d=dd||window.devicePixelRatio||1;c.width=w*d;c.height=h*d;c.style.width=w+'px';c.style.height=h+'px';const g=c.getContext('2d');g.scale(d,d);
   const P=ROOMS[k].pts,xs=P.map(p=>p[0]),ys=P.map(p=>p[1]),W=Math.max(...xs),H=Math.max(...ys),s=Math.min((w-6)/W,(h-6)/H),ox=(w-W*s)/2,oy=(h-H*s)/2;
@@ -928,7 +929,7 @@ function askNums(title,fields,cb){modal(`<h2>${esc(title)}</h2>${fields.map((f,i
 const TB=(a,label,cls='')=>`<button class="hbtn ${cls}" data-sb="${a}">${label}</button>`;
 function updSelBar(){const bar=$('#selBar'),it=sel&&byId(sel);bar.classList.toggle('show',!!it);if(!it){bar.innerHTML='';return}
   const name=it.t==='fix'?FIX[it.k].label:it.t==='seg'?SEG[it.k].label:it.t==='sym'?SYM[it.k].label:it.t==='area'?(it.nome||'Ambiente'):'Anotação';
-  bar.classList.toggle('low',tool==='sym'||tool==='fix'||tool==='room');
+  bar.classList.toggle('low',tool==='sym'||tool==='fix'||tool==='room');if(window.innerWidth<=780&&bar.classList.contains('low'))$('#hint').style.visibility='hidden';
   let h=`<span class="nm">${esc(name)}</span>`;
   if(it.t==='seg'&&SEG[it.k].wall){h+=TB('len','↔ '+fmt(wallInnerLen(it))+' m','meas')+TB('esp','▭ '+Math.round((it.e||0.15)*100)+' cm','meas');h+=it.k==='demolir'?TB('wk','Manter'):TB('wk','Demolir','red')}
   else if(it.t==='seg'&&SEG[it.k].opening){h+=TB('len','↔ '+fmt(dist(it.a,it.b))+' m','meas');if(it.k==='porta')h+=TB('door','⇄ Abertura')}
@@ -1117,7 +1118,7 @@ function showMenu(){modal(`<h2>Menu</h2>
   $('#mNew').onclick=newProject;$('#mProj').onclick=showProjects;$('#mExp').onclick=()=>$('#bExport').onclick();$('#m3d').onclick=()=>{closeModal();open3D('persp')};
   $('#mBg').onclick=showBg;$('#mPanel').onclick=()=>{closeModal();$('#panel').classList.add('open')}}
 $('#bMenu').onclick=showMenu;
-$('#hint').onclick=()=>{$('#hint').style.opacity=0;setTimeout(()=>{if($('#hint').style.opacity==='0')$('#hint').style.visibility='hidden'},300)};
+$('#hintX').onclick=()=>{$('#hint').style.opacity=0;setTimeout(()=>{if($('#hint').style.opacity==='0')$('#hint').style.visibility='hidden'},300)};
 $('#fileIn').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const j=JSON.parse(await f.text());if(!Array.isArray(j.items))throw 0;
   const valid=j.items.filter(i=>i&&((i.t==='seg'&&SEG[i.k]&&i.a&&i.b)||(i.t==='area'&&Array.isArray(i.pts)&&i.pts.length>=3)||(i.t==='sym'&&SYM[i.k])||(i.t==='fix'&&FIX[i.k]&&i.w>0&&i.d>0)||(i.t==='txt')));valid.forEach(i=>i.id=i.id||uid());
   const d=newDoc(j.name||f.name.replace(/\.json$/i,''));d.items=valid;closeModal();openDoc(d);scheduleSave()}catch(err){modal('<h2>Arquivo inválido</h2><p class="empty">Esse arquivo não parece ser um projeto exportado deste app.</p><div class="acts" style="justify-content:flex-end"><button class="hbtn" onclick="closeModal()">OK</button></div>')}};
@@ -1137,7 +1138,7 @@ function calTap(p){calPts.push({x:p.x,y:p.y});updBgBar();req();if(calPts.length<
   askText('Qual a medida real entre os dois pontos? (em metros)','',t=>{const real=parseNum(t);if(!(real>0)){calPts=[];updBgBar();req();return}
     const k=real/m,bg=doc.bg;bg.x=a.x-k*(a.x-bg.x);bg.y=a.y-k*(a.y-bg.y);bg.w*=k;bg.cal=true;doc.updated=Date.now();scheduleSave();
     setTool('select');fit();toast('Escala ajustada: '+fmt(real)+' m entre os pontos.')})}
-function toast(t){const h=$('#hint');h.textContent=t;h.style.opacity=1;h.style.visibility='';hintSeen=0}
+function toast(t){const h=$('#hint');$('#hintTxt').textContent=t;h.style.opacity=1;h.style.visibility='';hintSeen=0}
 function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src})}
 function compress(src,sw,sh){let maxD=2200,q=0.82,out='';for(let tries=0;tries<12;tries++){const k=Math.min(1,maxD/Math.max(sw,sh)),w=Math.round(sw*k),h=Math.round(sh*k);const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);g.drawImage(src,0,0,w,h);out=c.toDataURL('image/jpeg',q);if(out.length<235000)return out;if(q>0.5)q-=0.12;else{maxD*=0.8;q=0.7}}return out}
 function loadLib(id){const el=document.getElementById(id);if(!el)return Promise.reject(new Error('lib '+id));if(el.dataset.done)return Promise.resolve();const u=URL.createObjectURL(new Blob([el.textContent],{type:'text/javascript'}));return loadScript(u).then(()=>{el.dataset.done='1'})}
