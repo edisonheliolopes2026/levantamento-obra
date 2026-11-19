@@ -115,6 +115,11 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
 .pitem .nm span{font-size:11.5px;color:var(--mu)}
 .pitem.cur{border-color:var(--ac);background:#f5f8ff}
 #mobPanelBtn{display:none}
+#bMenu{display:none}
+.mitem{display:flex;align-items:center;gap:12px;width:100%;border:1px solid var(--bd);background:#fff;border-radius:10px;padding:13px 14px;font-size:15px;text-align:left;margin-bottom:8px}
+.mitem svg{width:22px;height:22px;flex-shrink:0;color:var(--ac)}
+.mitem small{display:block;font-size:12px;color:var(--mu);margin-top:1px}
+.mitem.pri{background:#eef3ff;border-color:#bcd0ff}
 .hide-sm{}
 @media (max-width:780px){
   #main{flex-direction:column-reverse}
@@ -123,7 +128,9 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
   #panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:55vh;z-index:30;border-left:none;border-top:1px solid var(--bd);box-shadow:0 -10px 30px rgba(0,0,0,.12);border-radius:14px 14px 0 0;transform:translateY(105%);transition:transform .2s}
   #panel.open{transform:none}
   #pclose{display:block;flex:0 0 44px!important}
-  #mobPanelBtn{display:inline-flex}
+  #mobPanelBtn{display:none!important}
+  #bMenu{display:inline-flex}
+  #b3d,#bBg,#bProjects,#bExport{display:none!important}
   .hide-sm{display:none!important}
   #projName{width:130px}
   #hint{max-width:calc(100% - 70px);font-size:11px}
@@ -158,6 +165,7 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
     <button class="hbtn" id="bProjects"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="hide-sm">Projetos</span></button>
     <button class="hbtn" id="bExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span class="hide-sm">Exportar</span></button>
     <button class="hbtn" id="mobPanelBtn">Painel</button>
+    <button class="hbtn pri" id="bMenu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Menu</button>
   </header>
   <div id="main">
     <nav id="tools"></nav>
@@ -979,10 +987,23 @@ async function showProjects(){modal('<h2>Projetos</h2><p class="empty">Carregand
   for(const p of list)h+=`<div class="pitem${p.id===doc.id?' cur':''}"><div class="nm"><b>${esc(p.name||'Sem nome')}</b><span>${new Date(p.updated).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})} · ${p.n} elementos</span></div>${p.id===doc.id?'<span class="empty">aberto</span>':`<button class="hbtn" data-open="${p.id}">Abrir</button>`}<button class="hbtn danger" data-del="${p.id}">Excluir</button></div>`;
   h+=`</div><div class="acts" style="justify-content:flex-end"><button class="hbtn" id="pClose">Fechar</button></div>`;modal(h);
   $('#pClose').onclick=closeModal;$('#pImp').onclick=()=>$('#fileIn').click();
-  $('#pNew').onclick=()=>{askText('Nome do novo levantamento','',n=>{const d=newDoc(n||'Novo levantamento');openDoc(d);scheduleSave()})};
+  $('#pNew').onclick=newProject;
   document.querySelectorAll('[data-open]').forEach(b=>b.onclick=async()=>{const d=await store.load(b.dataset.open);if(d){closeModal();openDoc(d)}});
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(b.dataset.c!=='1'){b.dataset.c='1';b.textContent='Confirmar?';return}await store.remove(b.dataset.del);if(b.dataset.del===doc.id){const d=newDoc();openDoc(d);scheduleSave()}showProjects()})}
 $('#bProjects').onclick=showProjects;
+function newProject(){askText('Nome do novo levantamento','',n=>{const d=newDoc(n||'Novo levantamento');openDoc(d);scheduleSave();toast('Projeto "'+d.name+'" criado. O anterior continua salvo em Meus projetos.')})}
+const MI=(id,icon,t,sub,pri)=>`<button class="mitem${pri?' pri':''}" id="${id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg><span>${t}<small>${sub}</small></span></button>`;
+function showMenu(){modal(`<h2>Menu</h2>
+  ${MI('mNew','<path d="M12 5v14M5 12h14"/>','Novo projeto','Começar um levantamento novo',true)}
+  ${MI('mProj','<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>','Meus projetos','Abrir, importar ou excluir projetos')}
+  ${MI('mExp','<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/>','Exportar','Prancha em PDF, imagem, resumo ou arquivo')}
+  ${MI('m3d','<path d="M12 3 3 8v8l9 5 9-5V8z"/><path d="m3 8 9 5 9-5M12 13v8"/>','Vista 3D e cortes','Ver o levantamento em perspectiva')}
+  ${MI('mBg','<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>','Imagem de fundo','Planta antiga, croqui ou foto para desenhar por cima')}
+  ${MI('mPanel','<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>','Painel','Propriedades, camadas, legenda e resumo')}
+  <div class="acts" style="justify-content:flex-end"><button class="hbtn" onclick="closeModal()">Fechar</button></div>`);
+  $('#mNew').onclick=newProject;$('#mProj').onclick=showProjects;$('#mExp').onclick=()=>$('#bExport').onclick();$('#m3d').onclick=()=>{closeModal();open3D('persp')};
+  $('#mBg').onclick=showBg;$('#mPanel').onclick=()=>{closeModal();$('#panel').classList.add('open')}}
+$('#bMenu').onclick=showMenu;
 $('#fileIn').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const j=JSON.parse(await f.text());if(!Array.isArray(j.items))throw 0;
   const valid=j.items.filter(i=>i&&((i.t==='seg'&&SEG[i.k]&&i.a&&i.b)||(i.t==='area'&&Array.isArray(i.pts)&&i.pts.length>=3)||(i.t==='sym'&&SYM[i.k])||(i.t==='fix'&&FIX[i.k]&&i.w>0&&i.d>0)||(i.t==='txt')));valid.forEach(i=>i.id=i.id||uid());
   const d=newDoc(j.name||f.name.replace(/\.json$/i,''));d.items=valid;closeModal();openDoc(d);scheduleSave()}catch(err){modal('<h2>Arquivo inválido</h2><p class="empty">Esse arquivo não parece ser um projeto exportado deste app.</p><div class="acts" style="justify-content:flex-end"><button class="hbtn" onclick="closeModal()">OK</button></div>')}};
