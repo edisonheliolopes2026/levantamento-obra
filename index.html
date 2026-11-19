@@ -256,6 +256,7 @@ const SEG={
   parede:{label:'Parede existente',layer:'paredes',wall:true,chain:true},
   construir:{label:'Parede a construir',layer:'paredes',wall:true,chain:true},
   demolir:{label:'Parede a demolir',layer:'paredes',wall:true,chain:true},
+  reformar:{label:'Parede a reformar',layer:'paredes',wall:true,chain:true},
   porta:{label:'Porta',layer:'paredes',opening:true},
   janela:{label:'Janela',layer:'paredes',opening:true},
   cota:{label:'Cota',layer:'cotas'},
@@ -264,7 +265,8 @@ const SEG={
   agua:{label:'Tubulação de água',layer:'hidraulica',pipe:true,chain:true,color:'#1e88e5',dash:[]},
   esgoto:{label:'Tubulação de esgoto',layer:'esgoto',pipe:true,chain:true,color:'#8d5524',dash:[10,4]}
 };
-const WALLSTYLE={parede:{fill:'#3d4450'},construir:{fill:'#cdebd6',stroke:'#2f9e5a'},demolir:{fill:'#fbe4e4',stroke:'#d64545',dash:[6,4]}};
+const WALLSTYLE={parede:{fill:'#3d4450'},construir:{fill:'#cdebd6',stroke:'#2f9e5a'},demolir:{fill:'#fbe4e4',stroke:'#d64545',dash:[6,4]},reformar:{fill:'#f6d9a8',stroke:'#c7771f'}};
+const WTYPES=[['parede','Existente','#3d4450'],['construir','Nova','#2f9e5a'],['reformar','Reformar','#c7771f'],['demolir','Demolir','#d64545']];
 const SYM={
   tomada:{label:'Tomada baixa',layer:'eletrica',h:0.3},
   tomada_media:{label:'Tomada média',layer:'eletrica',h:1.1},
@@ -314,6 +316,13 @@ const ROOMS={
   cor:{label:'Corredor 1,2 × 4',nome:'Corredor',pts:[[0,0],[1.2,0],[1.2,4],[0,4]]},
   L:{label:'Em L 4 × 4',nome:'',pts:[[0,0],[4,0],[4,2],[2,2],[2,4],[0,4]]}
 };
+const PECAS=['30 × 30','45 × 45','60 × 60','62,5 × 62,5','80 × 80','90 × 90','60 × 120','120 × 120','20 × 120','26 × 180','Outro'];
+const OBRAS=['','Manter','Reforma','Novo'];
+function pecaM2(a){const t=a.peca==='Outro'?a.pecaOutro:a.peca;const m=String(t||'').match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/i);return m?parseNum(m[1])*parseNum(m[2])/10000:null}
+function roomRodape(a){const P=a.pts,n=P.length;let per=polyPerim(P),doors=0;for(const o of doc.items){if(o.t!=='seg'||o.k!=='porta')continue;const m={x:(o.a.x+o.b.x)/2,y:(o.a.y+o.b.y)/2};for(let i=0;i<n;i++)if(segDist(m,P[i],P[(i+1)%n]).d<(o.e||0.15)/2+0.08){doors+=dist(o.a,o.b);break}}return Math.max(0,per-doors)}
+function pisoCalc(a){const A=Math.abs(polyArea(a.pts)),pr=(a.perda!=null&&a.perda!==''?+a.perda:10),Ap=A*(1+pr/100),pm=pecaM2(a);return{A,pr,Ap,pm,pecas:pm?Math.ceil(Ap/pm-1e-9):null,rod:roomRodape(a)}}
+const isObra=a=>a.obra==='Reforma'||a.obra==='Novo';
+function pisoCalcHtml(a){const c=pisoCalc(a);return`<div class="kv"><span>Área do piso</span><b>${fmt(c.A)} m²</b></div><div class="kv"><span>Com perda de ${fmt(c.pr,0)}%</span><b>${fmt(c.Ap)} m²</b></div>${c.pecas?`<div class="kv"><span>Peças de ${esc(a.peca==='Outro'?a.pecaOutro:a.peca)} cm (${fmt(c.pm,4).replace(/0+$/,'').replace(/,$/,'')} m²)</span><b>${c.pecas} peças</b></div>`:''}<div class="kv"><span>Rodapé (sem portas)</span><b>${fmt(c.rod)} m</b></div>`}
 const FIXGROUPS=['Bancadas e pias','Banheiro','Equipamentos'].map(g=>[g,Object.keys(FIX).filter(k=>FIX[k].grp===g)]);
 const AREACOL={azul:{fill:'rgba(143,179,220,.18)',stroke:'#8fb3dc',label:'Azul'},verde:{fill:'rgba(120,190,140,.2)',stroke:'#79b98c',label:'Verde'},amarelo:{fill:'rgba(240,200,90,.22)',stroke:'#d9b44a',label:'Amarelo'},rosa:{fill:'rgba(230,140,160,.18)',stroke:'#d98aa0',label:'Rosa'},cinza:{fill:'rgba(160,165,175,.18)',stroke:'#a0a5af',label:'Cinza'}};
 const PISOS=['Porcelanato','Cerâmica','Laminado','Vinílico','Taco de madeira','Assoalho','Cimento queimado','Contrapiso','Granito','Mármore','Ladrilho hidráulico','Carpete'];
@@ -352,7 +361,7 @@ const HINTS={
   pipe:'Arraste para desenhar um trecho e digite a medida, ou toque no início e em cada curva. Toque 2× ou Concluir para terminar.',
   cota:'Toque em dois pontos para medir a distância.',
   corte:'Risque uma linha atravessando o ambiente onde quer ver o corte. As setas mostram para onde o corte olha. Depois toque em Ver corte.',
-  area:'Toque nos cantos do ambiente e no primeiro ponto para fechar. Depois preencha piso e forro no painel.',
+  area:'Toque DENTRO de um espaço fechado por paredes para criar o ambiente automaticamente. Ou toque nos cantos para contornar à mão.',
   fix:'Escolha a peça acima e toque no desenho. Perto de uma parede ela encosta e gira sozinha. Ajuste tamanho e rotação no painel.',
   sym:'Escolha o tipo de ponto acima e toque perto da parede, do lado do cômodo: tomadas, interruptores, água e gás encostam e viram para dentro sozinhos.',
   text:'Toque onde quer escrever uma anotação.',
@@ -489,6 +498,45 @@ function placeOpening(raw,k,px){const s=snapPoint(raw,{onWall:true});if(s.type!=
   let t=(s.p.x-w.a.x)*G.ux+(s.p.y-w.a.y)*G.uy;t=Math.max(W/2,Math.min(G.L-W/2,t));if(G.L<W)return null;
   const a={x:w.a.x+G.ux*(t-W/2),y:w.a.y+G.uy*(t-W/2)},b={x:w.a.x+G.ux*(t+W/2),y:w.a.y+G.uy*(t+W/2)};
   return addItem({t:'seg',k,a,b,e:w.e||0.15,lado:1,alt:k==='porta'?2.1:1.2,peit:k==='janela'?1.1:undefined})}
+
+// ---- auto room detection (tap inside a space closed by walls)
+function detectRoom(pt){const walls=doc.items.filter(i=>i.t==='seg'&&SEG[i.k].wall);if(walls.length<3)return null;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;walls.forEach(w=>wallPoly(w).forEach(p=>{x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y)}));
+  if(pt.x<=x0||pt.x>=x1||pt.y<=y0||pt.y>=y1)return null;x0-=0.2;y0-=0.2;x1+=0.2;y1+=0.2;
+  const res=Math.max(0.02,Math.max(x1-x0,y1-y0)/1400),W=Math.ceil((x1-x0)/res)+1,H=Math.ceil((y1-y0)/res)+1,M=new Uint8Array(W*H);
+  for(const w of walls){const P=wallPoly(w),bx0=Math.max(0,Math.floor((Math.min(...P.map(p=>p.x))-x0)/res)),bx1=Math.min(W-1,Math.ceil((Math.max(...P.map(p=>p.x))-x0)/res)),by0=Math.max(0,Math.floor((Math.min(...P.map(p=>p.y))-y0)/res)),by1=Math.min(H-1,Math.ceil((Math.max(...P.map(p=>p.y))-y0)/res));
+    for(let j=by0;j<=by1;j++)for(let i=bx0;i<=bx1;i++){if(M[j*W+i])continue;const c={x:x0+(i+0.5)*res,y:y0+(j+0.5)*res};if(inPoly(c,P))M[j*W+i]=1}}
+  const si=Math.floor((pt.x-x0)/res),sj=Math.floor((pt.y-y0)/res);if(M[sj*W+si])return null;
+  const st=[sj*W+si];M[sj*W+si]=2;let cnt=0;
+  while(st.length){const k=st.pop();cnt++;const i=k%W,j=(k-i)/W;if(i===0||j===0||i===W-1||j===H-1)return{open:true};
+    for(const n of[k-1,k+1,k-W,k+W])if(M[n]===0){M[n]=2;st.push(n)}}
+  if(cnt*res*res<0.15)return null;
+  // boundary edges with filled cell on the left; vertices are grid corners
+  const next=new Map(),key=(i,j)=>i+','+j;
+  for(let j=0;j<H;j++)for(let i=0;i<W;i++){if(M[j*W+i]!==2)continue;const f=(a,b)=>M[b*W+a]===2;
+    if(!f(i,j-1))next.set(key(i+1,j),[i,j]);if(!f(i+1,j))next.set(key(i+1,j+1),[i+1,j]);if(!f(i,j+1))next.set(key(i,j+1),[i+1,j+1]);if(!f(i-1,j))next.set(key(i,j),[i,j+1])}
+  let best=null;const used=new Set();
+  for(const[k0]of next){if(used.has(k0))continue;const loop=[];let k=k0,g=0;while(!used.has(k)&&g++<1e6){used.add(k);const[a,b]=k.split(',').map(Number);loop.push({x:a,y:b});const nx=next.get(k);if(!nx)break;k=key(nx[0],nx[1])}
+    if(!best||loop.length>best.length)best=loop}
+  if(!best||best.length<4)return null;
+  // drop collinear points, then Douglas–Peucker on the closed loop
+  let L=best.filter((p,i)=>{const a=best[(i-1+best.length)%best.length],c=best[(i+1)%best.length];return(a.x-p.x)*(c.y-p.y)-(a.y-p.y)*(c.x-p.x)!==0});
+  const dp=(pts,eps)=>{if(pts.length<3)return pts;const a=pts[0],b=pts[pts.length-1];let md=0,mi=0;for(let i=1;i<pts.length-1;i++){const d=segDist(pts[i],a,b).d;if(d>md){md=d;mi=i}}return md>eps?[...dp(pts.slice(0,mi+1),eps).slice(0,-1),...dp(pts.slice(mi),eps)]:[a,b]};
+  let far=0;L.forEach((p,i)=>{if(dist(p,L[0])>dist(L[far],L[0]))far=i});
+  L=[...dp(L.slice(0,far+1),2.2).slice(0,-1),...dp([...L.slice(far),L[0]],2.2).slice(0,-1)];
+  const pts=L.map(p=>({x:x0+p.x*res,y:y0+p.y*res}));if(pts.length<3)return null;
+  // link each edge to the wall whose inner face it lies on
+  const n=pts.length,ids=[];
+  for(let j=0;j<n;j++){const a=pts[j],b=pts[(j+1)%n],G=geom(a,b);let bw=null,bd=1e9;
+    for(const w of walls){const WG=geom(w.a,w.b);if(Math.abs(WG.ux*G.uy-WG.uy*G.ux)>0.03)continue;const da=Math.abs((a.x-w.a.x)*WG.nx+(a.y-w.a.y)*WG.ny),db=Math.abs((b.x-w.a.x)*WG.nx+(b.y-w.a.y)*WG.ny),e=(w.e||0.15)/2,err=Math.abs(da-e)+Math.abs(db-e);
+      const m={x:(a.x+b.x)/2,y:(a.y+b.y)/2},t=(m.x-w.a.x)*WG.ux+(m.y-w.a.y)*WG.uy;if(t<-0.05||t>WG.L+0.05)continue;if(err<bd){bd=err;bw=w}}
+    ids.push(bw&&bd<res*6?bw.id:null)}
+  const ok=ids.every(Boolean)&&new Set(ids).size===ids.length;
+  return{pts:ok?pts.map((_,j)=>pts[(j+1)%n]):pts,walls:ok?ids:null}}
+function autoRoomAt(raw){const inside=doc.items.find(a=>a.t==='area'&&visible(a)&&inPoly(raw,a.pts));if(inside){sel=inside.id;renderPanel();req();toast('Este espaço já é o ambiente "'+(inside.nome||'Ambiente')+'".');return true}
+  const r=detectRoom(raw);if(!r)return false;if(r.open){toast('Esse espaço não está fechado por paredes. Feche as paredes ou toque nos cantos para contornar o ambiente.');return true}
+  pushUndo();const n=doc.items.filter(i=>i.t==='area').length+1;const a={t:'area',pts:r.pts,nome:'Ambiente '+n,piso:'',forro:'',pd:2.8,cor:'azul',id:uid()};if(r.walls)a.walls=r.walls;doc.items.unshift(a);
+  changed();sel=a.id;renderPanel();openPanelMobile();toast('Ambiente criado: '+fmt(Math.abs(polyArea(a.pts)))+' m². Preencha piso, forro e situação no painel.');return true}
 function hostWall(o){let best=null,bd=1e9;for(const w of doc.items){if(w.t!=='seg'||!SEG[w.k].wall)continue;const G=geom(w.a,w.b),we=(w.e||0.15)/2+0.06;
   const da=Math.abs((o.a.x-w.a.x)*G.nx+(o.a.y-w.a.y)*G.ny),db=Math.abs((o.b.x-w.a.x)*G.nx+(o.b.y-w.a.y)*G.ny);if(da>we||db>we)continue;
   const t0=(o.a.x-w.a.x)*G.ux+(o.a.y-w.a.y)*G.uy,t1=(o.b.x-w.a.x)*G.ux+(o.b.y-w.a.y)*G.uy;if(Math.max(t0,t1)<-0.02||Math.min(t0,t1)>G.L+0.02)continue;if(da+db<bd){bd=da+db;best=w}}return best}
@@ -578,7 +626,8 @@ function drawArea(g,v,it){const c=AREACOL[it.cor]||AREACOL.azul;polyPath(g,v,it.
 function drawAreaLabel(g,v,it){const c=centroid(it.pts),x=c.x*v.scale+v.ox,y=c.y*v.scale+v.oy,fs=areaFs(v);
   const lines=[[it.nome||'Ambiente',`700 ${fs+1}px system-ui`,'#1f2430'],[fmt(Math.abs(polyArea(it.pts)))+' m²',`600 ${fs}px system-ui`,'#2563eb']];
   const full=v.scale>=34;
-  if(full&&it.piso)lines.push(['Piso: '+it.piso+(it.estPiso?' ('+it.estPiso+')':''),`${fs-1}px system-ui`,'#4b5563']);
+  if(full&&isObra(it)&&it.pisoNovo)lines.push(['Piso novo: '+it.pisoNovo+(it.peca&&it.peca!=='Outro'?' '+it.peca.replace(/ /g,''):it.pecaOutro?' '+it.pecaOutro:''),`600 ${fs-1}px system-ui`,'#2f7d4a']);
+  else if(full&&it.piso)lines.push(['Piso: '+it.piso+(it.estPiso?' ('+it.estPiso+')':''),`${fs-1}px system-ui`,'#4b5563']);
   if(full&&it.forro)lines.push(['Forro: '+it.forro+(it.estForro?' ('+it.estForro+')':''),`${fs-1}px system-ui`,'#4b5563']);
   if(full&&it.pd)lines.push(['PD '+fmt(it.pd)+' m',`${fs-1}px system-ui`,'#4b5563']);
   g.save();g.textAlign='center';g.textBaseline='middle';const lh=fs+4;let yy=y-(lines.length-1)*lh/2;
@@ -591,7 +640,7 @@ function drawScene0(g,v,W,H,ex){syncRooms();
   g.fillStyle='#fff';g.fillRect(0,0,W,H);if(ex!=='sheet')drawGrid(g,v,W,H,ex);drawBg(g,v);
   const its=doc.items.filter(visible);
   its.filter(i=>i.t==='area').forEach(i=>drawArea(g,v,i));
-  for(const k of['parede','construir','demolir'])drawWalls(g,v,its.filter(i=>i.t==='seg'&&i.k===k),k);
+  for(const k of['parede','reformar','construir','demolir'])drawWalls(g,v,its.filter(i=>i.t==='seg'&&i.k===k),k);
   its.filter(i=>i.t==='seg'&&SEG[i.k].opening).forEach(i=>drawOpening(g,v,i));
   its.filter(i=>i.t==='fix').forEach(i=>drawFix(g,v,i));
   its.filter(i=>i.t==='seg'&&SEG[i.k].pipe).forEach(i=>drawPipe(g,v,i));
@@ -883,7 +932,7 @@ function onTap(raw,e){
   if(draw&&draw.wall&&SEG[draw.kind]&&SEG[draw.kind].opening)s=snapPoint(raw,{from:last,alongWall:draw.wall});
   else if(draw)s=snapPoint(raw,{from:last});
   else s=snapPoint(raw,{onWall:SEG[tool]&&SEG[tool].opening});
-  if(tool==='area'&&!draw){draw={kind:'area',pts:[s.p]};updDrawBar();req();return}
+  if(tool==='area'&&!draw){if(s.type!=='end'&&autoRoomAt(raw))return;draw={kind:'area',pts:[s.p]};updDrawBar();req();return}
   addSegPoint(s.p);
   if(e.pointerType!=='mouse'){hover=null;snapMark=null}
 }
@@ -931,7 +980,7 @@ function updSelBar(){const bar=$('#selBar'),it=sel&&byId(sel);bar.classList.togg
   const name=it.t==='fix'?FIX[it.k].label:it.t==='seg'?SEG[it.k].label:it.t==='sym'?SYM[it.k].label:it.t==='area'?(it.nome||'Ambiente'):'Anotação';
   bar.classList.toggle('low',tool==='sym'||tool==='fix'||tool==='room');if(window.innerWidth<=780&&bar.classList.contains('low'))$('#hint').style.visibility='hidden';
   let h=`<span class="nm">${esc(name)}</span>`;
-  if(it.t==='seg'&&SEG[it.k].wall){h+=TB('len','↔ '+fmt(wallInnerLen(it))+' m','meas')+TB('esp','▭ '+Math.round((it.e||0.15)*100)+' cm','meas');h+=it.k==='demolir'?TB('wk','Manter'):TB('wk','Demolir','red')}
+  if(it.t==='seg'&&SEG[it.k].wall){h+=TB('len','↔ '+fmt(wallInnerLen(it))+' m','meas')+TB('esp','▭ '+Math.round((it.e||0.15)*100)+' cm','meas');const wt=WTYPES.find(w=>w[0]===it.k)||WTYPES[0];h+=`<button class="hbtn" data-sb="wtype" style="color:${wt[2]};font-weight:700">● ${wt[1]} ▾</button>`}
   else if(it.t==='seg'&&SEG[it.k].opening){h+=TB('len','↔ '+fmt(dist(it.a,it.b))+' m','meas');if(it.k==='porta')h+=TB('door','⇄ Abertura')}
   else if(it.t==='seg'&&SEG[it.k].pipe)h+=TB('len','↔ '+fmt(dist(it.a,it.b))+' m','meas');
   else if(it.t==='seg'&&it.k==='corte')h+=TB('cut','Ver corte','pri');
@@ -948,7 +997,8 @@ function updSelBar(){const bar=$('#selBar'),it=sel&&byId(sel);bar.classList.togg
     else if(a==='cut')open3D(it.id);
     else if(a==='flip'){pushUndo();const o=symOut(it),e=it.we||0.15;it.x-=o.x*e;it.y-=o.y*e;it.rot=(it.rot+180)%360;done()}
     else if(a==='rot'){pushUndo();it.rot=((it.rot||0)+90)%360;done()}
-    else if(a==='wk'){pushUndo();it.k=it.k==='demolir'?'parede':'demolir';done()}
+    else if(a==='wtype'){modal(`<h2>Tipo da parede</h2>${WTYPES.map(([k,l,c])=>`<button class="mitem${k===it.k?' pri':''}" data-wt="${k}"><span style="width:22px;height:12px;border-radius:3px;flex-shrink:0;background:${WALLSTYLE[k].fill};border:2px ${k==='demolir'?'dashed':'solid'} ${WALLSTYLE[k].stroke||WALLSTYLE[k].fill}"></span><span style="color:${c};font-weight:700">${l}<small>${SEG[k].label}</small></span></button>`).join('')}<div class="acts" style="justify-content:flex-end"><button class="hbtn" onclick="closeModal()">Cancelar</button></div>`);
+      document.querySelectorAll('[data-wt]').forEach(x=>x.onclick=()=>{closeModal();if(x.dataset.wt!==it.k){pushUndo();it.k=x.dataset.wt;done()}})}
     else if(a==='door'){pushUndo();it.lado=-(it.lado||1);done()}
     else if(a==='len'){const isW=SEG[it.k].wall;askNums(isW?'Comprimento interno da parede (m)':'Comprimento (m)',[[isW?'Medida':'Comprimento',isW?wallInnerLen(it):dist(it.a,it.b)]],([v])=>{if(!(v>0))return;pushUndo();
         if(isW)setWallInnerLen(it,v);else{const G=geom(it.a,it.b),hw=SEG[it.k].opening&&hostWall(it);let b={x:it.a.x+G.ux*v,y:it.a.y+G.uy*v};if(hw){const H=geom(hw.a,hw.b),tb=(b.x-hw.a.x)*H.ux+(b.y-hw.a.y)*H.uy;if(tb>H.L||tb<0){const sh=tb>H.L?H.L-tb:-tb;it.a={x:it.a.x+H.ux*sh,y:it.a.y+H.uy*sh};b={x:b.x+H.ux*sh,y:b.y+H.uy*sh}}}it.b=b}done()})}
@@ -964,7 +1014,7 @@ function renderPanel(){updSelBar();const b=$('#pbody');
   if(!it){b.innerHTML=`<div class="empty"><p><b>Como usar</b></p><p>1. Use <b>Cômodo</b> para colocar cada ambiente pronto e toque nas paredes para digitar as medidas no topo. Para paredes soltas, use <b>Existente</b>.</p><p>2. Marque <b>portas e janelas</b> sobre as paredes.</p><p>3. Toque no meio do cômodo e em <b>⋯ Mais</b> para anotar piso, forro e pé-direito.</p><p>4. Em <b>Pontos</b>, posicione tomadas, interruptores, água, esgoto, gás e problemas encontrados.</p><p>5. Marque em <span style="color:#2f9e5a;font-weight:600">verde</span> o que será construído e em <span style="color:#d64545;font-weight:600">vermelho</span> o que será demolido.</p><p>Tudo é salvo automaticamente. A aba <b>Resumo</b> soma áreas, metros de parede e pontos.</p></div>`;return}
   let h='',title='',icon=null;
   if(it.t==='seg'){const s=SEG[it.k],L=dist(it.a,it.b);title=s.label;icon=lineCanvas(it.k);
-    if(s.wall){h+=fld('Tipo',`<select data-f="k">${['parede','construir','demolir'].map(k=>`<option value="${k}"${k===it.k?' selected':''}>${SEG[k].label}</option>`).join('')}</select>`);
+    if(s.wall){h+=fld('Tipo',`<select data-f="k">${WTYPES.map(([k,l])=>`<option value="${k}"${k===it.k?' selected':''}>${l} — ${SEG[k].label}</option>`).join('')}</select>`);
       h+=`<div class="row">${fld('Comprimento (m)',num('_len',L))}${fld('Espessura (m)',num('e',it.e||0.15))}</div>`;
       h+=fld('Material',inp('mat',it.mat,'text','list="dlMat"'))+dl('dlMat',MATERIAIS);
       h+=`<div class="kv"><span>Área de parede (PD 2,80)</span><b>${fmt(L*2.8)} m²</b></div>`}
@@ -988,6 +1038,13 @@ function renderPanel(){updSelBar();const b=$('#pbody');
     h+=`<div class="row">${fld('Forro',inp('forro',it.forro,'text','list="dlForro"'))}${fld('Estado',`<select data-f="estForro">${opts(ESTADOS,it.estForro||'')}</select>`)}</div>`+dl('dlForro',FORROS);
     h+=`<div class="row">${fld('Pé-direito (m)',num('pd',it.pd))}${fld('Cor',`<select data-f="cor">${Object.entries(AREACOL).map(([k,c])=>`<option value="${k}"${k===(it.cor||'azul')?' selected':''}>${c.label}</option>`).join('')}</select>`)}</div>`;
     h+=fld('Revestimento de parede',inp('rev',it.rev,'text','placeholder="ex: pintura, azulejo até 1,50"'));
+    h+=fld('Situação do ambiente',`<select data-f="obra">${OBRAS.map(o=>`<option value="${o}"${(it.obra||'')===o?' selected':''}>${o==='Novo'?'Novo (construção)':o==='Reforma'?'Reforma':o==='Manter'?'Manter como está':'—'}</option>`).join('')}</select>`);
+    if(isObra(it)){h+=`<div style="border:1px solid #bfe3c8;background:#f3fbf5;border-radius:10px;padding:10px 10px 4px;margin-bottom:10px"><h3 style="margin-top:0;color:#2f7d4a">Piso novo</h3>`;
+      h+=fld('Tipo de piso novo',inp('pisoNovo',it.pisoNovo,'text','list="dlPiso2" placeholder="ex: Porcelanato"'))+dl('dlPiso2',PISOS);
+      h+=`<div class="row">${fld('Tamanho da peça (cm)',`<select data-f="peca">${opts(['',...PECAS],it.peca||'')}</select>`)}${fld('Perda (%)',num('perda',it.perda!=null&&it.perda!==''?it.perda:10))}</div>`;
+      if(it.peca==='Outro')h+=fld('Medida da peça (cm)',inp('pecaOutro',it.pecaOutro,'text','placeholder="ex: 50 × 100"'));
+      h+=`<div id="pisoCalc">${pisoCalcHtml(it)}</div>`;
+      h+=fld('Forro novo',inp('forroNovo',it.forroNovo,'text','list="dlForro2" placeholder="ex: Gesso liso"'))+dl('dlForro2',FORROS)+'</div>'}
   }else if(it.t==='fix'){title=FIX[it.k].label;icon=fixCanvas(it.k,34,28);
     h+=fld('Tipo',`<select data-f="k">${FIXGROUPS.map(([g,ks])=>`<optgroup label="${g}">${ks.map(k=>`<option value="${k}"${k===it.k?' selected':''}>${FIX[k].label}</option>`).join('')}</optgroup>`).join('')}</select>`);
     h+=`<div class="row">${fld('Largura (m)',num('w',it.w))}${fld('Profundidade (m)',num('d',it.d))}</div>`;
@@ -1027,8 +1084,9 @@ function renderPanel(){updSelBar();const b=$('#pbody');
       if(f==='k'&&it.t==='fix'){it.w=FIX[val].w;it.d=FIX[val].d;it.h=FIX[val].h}
       if(it.t==='fix'&&(f==='w'||f==='d')&&!(val>0.01))it[f]=0.05;
       if(f==='rot')it.rot=((val%360)+360)%360;
+      if(it.t==='area'&&['perda','peca','pecaOutro','pisoNovo'].includes(f)){const pc=$('#pisoCalc');if(pc)pc.innerHTML=pisoCalcHtml(it)}
       req();if(f==='nome'){const t=b.querySelector('.ptitle span');if(t)t.textContent=val||'Ambiente'}};
-    const commit=()=>{if(snap0!==null&&snap0!==snapshot()){pushUndo(snap0);changed()}snap0=null;if(el.tagName==='SELECT'&&['k'].includes(el.dataset.f))renderPanel()};
+    const commit=()=>{if(snap0!==null&&snap0!==snapshot()){pushUndo(snap0);changed()}snap0=null;if(el.tagName==='SELECT'&&['k','obra','peca'].includes(el.dataset.f))renderPanel()};
     el.addEventListener('input',apply);el.addEventListener('change',()=>{apply();commit()});el.addEventListener('blur',commit);
   });
 }
@@ -1037,12 +1095,13 @@ function renderLayers(b){let h='<h3>Mostrar no desenho</h3>';for(const[k,l]of Ob
   b.innerHTML=h;b.querySelectorAll('[data-l]').forEach(c=>c.onchange=()=>{layerOn[c.dataset.l]=c.checked;if(sel&&byId(sel)&&!visible(byId(sel)))sel=null;req()})}
 function renderLegend(b){b.innerHTML='<h3>Paredes e aberturas</h3><div id="lg1"></div><h3>Tubulações e áreas</h3><div id="lg2"></div><h3>Pontos</h3><div id="lg3"></div><p class="empty" style="margin-top:10px">Tomadas seguem a NBR 5444: triângulo vazio = baixa (≈30 cm), meio cheio = média (≈1,10 m), cheio = alta (≈2,10 m).</p>';
   const row=(c,t,host)=>{const d=document.createElement('div');d.className='leg';d.appendChild(c);d.insertAdjacentHTML('beforeend',`<span>${t}</span>`);b.querySelector(host).appendChild(d)};
-  ['parede','construir','demolir','porta','janela','cota'].forEach(k=>row(lineCanvas(k),SEG[k].label,'#lg1'));
+  ['parede','construir','reformar','demolir','porta','janela','cota'].forEach(k=>row(lineCanvas(k),SEG[k].label,'#lg1'));
   ['eletroduto','agua','esgoto'].forEach(k=>row(lineCanvas(k),SEG[k].label,'#lg2'));row(lineCanvas('area'),'Ambiente (piso / forro)','#lg2');
   for(const[,ks]of SYMGROUPS)ks.forEach(k=>row(symCanvas(k,34,24),SYM[k].label,'#lg3'));
   b.querySelector('#lg3').insertAdjacentHTML('afterend','<h3>Louças, bancadas e equipamentos</h3><div id="lg4"></div>');Object.keys(FIX).forEach(k=>row(fixCanvas(k),FIX[k].label,'#lg4'))}
-function computeSummary(){syncRooms();const its=doc.items,s={amb:[],piso:{},forro:{},seg:{},open:{porta:0,janela:0},sym:{},fix:{},banc:0,prob:[]};
-  for(const it of its){if(it.t==='area'){const A=Math.abs(polyArea(it.pts));s.amb.push({n:it.nome||'Ambiente',A,piso:it.piso,forro:it.forro});if(it.piso)s.piso[it.piso]=(s.piso[it.piso]||0)+A;if(it.forro)s.forro[it.forro]=(s.forro[it.forro]||0)+A}
+function computeSummary(){syncRooms();const its=doc.items,s={amb:[],piso:{},forro:{},seg:{},open:{porta:0,janela:0},sym:{},fix:{},banc:0,prob:[],novo:[],novoTot:{}};
+  for(const it of its){if(it.t==='area'){const A=Math.abs(polyArea(it.pts));s.amb.push({n:it.nome||'Ambiente',A,piso:it.piso,forro:it.forro});if(it.piso)s.piso[it.piso]=(s.piso[it.piso]||0)+A;if(it.forro)s.forro[it.forro]=(s.forro[it.forro]||0)+A;
+      if(isObra(it)){const c=pisoCalc(it),key=(it.pisoNovo||'Piso novo')+(it.peca?' '+(it.peca==='Outro'?it.pecaOutro||'':it.peca)+' cm':'');s.novo.push({n:it.nome||'Ambiente',obra:it.obra,key,c});const T=s.novoTot[key]||(s.novoTot[key]={A:0,Ap:0,pecas:0,rod:0,hasP:false});T.A+=c.A;T.Ap+=c.Ap;T.rod+=c.rod;if(c.pecas){T.pecas+=c.pecas;T.hasP=true}}}
     else if(it.t==='seg'){if(SEG[it.k].opening)s.open[it.k]++;else if(it.k!=='cota'&&it.k!=='corte')s.seg[it.k]=(s.seg[it.k]||0)+dist(it.a,it.b)}
     else if(it.t==='fix'){s.fix[it.k]=(s.fix[it.k]||0)+1;if(it.k==='bancada'||it.k==='pia_cozinha')s.banc+=it.w}
     else if(it.t==='sym'){s.sym[it.k]=(s.sym[it.k]||0)+(it.qtd||1);if(it.k==='problema')s.prob.push(it.obs||it.nota||'(sem descrição)')}}
@@ -1052,6 +1111,8 @@ function renderSummary(b){const s=computeSummary();let h='';const tr=(a,v)=>`<tr
   h+='<h3>Ambientes</h3>';h+=s.amb.length?`<table class="sum">${s.amb.map(a=>tr(a.n,fmt(a.A)+' m²')).join('')}${tr('Total',`<b>${fmt(tot)} m²</b>`)}</table>`:'<p class="empty">Nenhum ambiente desenhado.</p>';
   if(Object.keys(s.piso).length)h+=`<h3>Pisos</h3><table class="sum">${Object.entries(s.piso).map(([k,v])=>tr(k,fmt(v)+' m²')).join('')}</table>`;
   if(Object.keys(s.forro).length)h+=`<h3>Forros</h3><table class="sum">${Object.entries(s.forro).map(([k,v])=>tr(k,fmt(v)+' m²')).join('')}</table>`;
+  if(s.novo.length){h+=`<h3 style="color:#2f7d4a">Piso novo (reforma / obra nova)</h3><table class="sum">${s.novo.map(x=>tr(x.n+' — '+x.key,fmt(x.c.Ap)+' m²'+(x.c.pecas?` · ${x.c.pecas} pç`:''))).join('')}</table>`;
+    h+=`<table class="sum" style="margin-top:6px">${Object.entries(s.novoTot).map(([k,T])=>tr('Total '+k,`<b>${fmt(T.Ap)} m²${T.hasP?` · ${T.pecas} pç`:''}</b>`)).join('')}${tr('Rodapé (todos)',fmt(Object.values(s.novoTot).reduce((a,T)=>a+T.rod,0))+' m')}</table><p class="empty" style="font-size:11.5px">m² já com a perda indicada em cada ambiente.</p>`}
   const sg=Object.entries(s.seg);if(sg.length||s.open.porta||s.open.janela){h+=`<h3>Paredes e tubulações</h3><table class="sum">${sg.map(([k,v])=>tr(SEG[k].label,fmt(v)+' m'+(SEG[k].wall?` <span style="color:#9aa1ad">(${fmt(v*2.8,1)} m²)</span>`:''))).join('')}${s.open.porta?tr('Portas',s.open.porta):''}${s.open.janela?tr('Janelas',s.open.janela):''}</table><p class="empty" style="font-size:11.5px">m² de parede considerando pé-direito de 2,80 m.</p>`}
   const sy=Object.entries(s.sym);if(sy.length)h+=`<h3>Pontos</h3><table class="sum">${sy.map(([k,v])=>tr(SYM[k].label,v)).join('')}</table>`;
   const fx=Object.entries(s.fix);if(fx.length)h+=`<h3>Louças e equipamentos</h3><table class="sum">${fx.map(([k,v])=>tr(FIX[k].label,v)).join('')}${s.banc?tr('Bancadas (comprimento total)',fmt(s.banc)+' m'):''}</table>`;
@@ -1061,6 +1122,7 @@ function renderSummary(b){const s=computeSummary();let h='';const tr=(a,v)=>`<tr
 function summaryText(){const s=computeSummary();let t=`LEVANTAMENTO — ${doc.name}\n${new Date().toLocaleDateString('pt-BR')}\n\nAMBIENTES\n`;s.amb.forEach(a=>t+=`- ${a.n}: ${fmt(a.A)} m²${a.piso?' | piso '+a.piso:''}${a.forro?' | forro '+a.forro:''}\n`);
   t+=`Total: ${fmt(s.amb.reduce((x,a)=>x+a.A,0))} m²\n`;if(Object.keys(s.piso).length){t+='\nPISOS\n';for(const[k,v]of Object.entries(s.piso))t+=`- ${k}: ${fmt(v)} m²\n`}
   if(Object.keys(s.forro).length){t+='\nFORROS\n';for(const[k,v]of Object.entries(s.forro))t+=`- ${k}: ${fmt(v)} m²\n`}
+  if(s.novo.length){t+='\nPISO NOVO (com perda)\n';s.novo.forEach(x=>t+=`- ${x.n} (${x.obra}): ${x.key} — ${fmt(x.c.Ap)} m²${x.c.pecas?' — '+x.c.pecas+' peças':''} — rodapé ${fmt(x.c.rod)} m\n`);for(const[k,T]of Object.entries(s.novoTot))t+=`  Total ${k}: ${fmt(T.Ap)} m²${T.hasP?' — '+T.pecas+' peças':''}\n`}
   t+='\nPAREDES / TUBULAÇÕES\n';for(const[k,v]of Object.entries(s.seg))t+=`- ${SEG[k].label}: ${fmt(v)} m\n`;t+=`- Portas: ${s.open.porta} | Janelas: ${s.open.janela}\n`;
   if(Object.keys(s.fix).length){t+='\nLOUÇAS E EQUIPAMENTOS\n';for(const[k,v]of Object.entries(s.fix))t+=`- ${FIX[k].label}: ${v}\n`;if(s.banc)t+=`- Bancadas: ${fmt(s.banc)} m lineares\n`}
   t+='\nPONTOS\n';for(const[k,v]of Object.entries(s.sym))t+=`- ${SYM[k].label}: ${v}\n`;if(s.prob.length){t+='\nPROBLEMAS\n';s.prob.forEach((p,i)=>t+=`${i+1}. ${p}\n`)}return t}
@@ -1208,7 +1270,7 @@ function build3D(){
   const areas=its.filter(i=>i.t==='area'),defPD=(areas.find(a=>a.pd>0)||{}).pd||2.8;
   const pdAt=p=>{for(const a of areas)if(a.pd>0&&inPoly(p,a.pts))return a.pd;return 0};
   const openings=its.filter(i=>i.t==='seg'&&SEG[i.k].opening);
-  const WCOL={parede:0xe8e5df,construir:0x9fd6ae,demolir:0xf0a0a0};let maxH=defPD;
+  const WCOL={parede:0xe8e5df,construir:0x9fd6ae,demolir:0xf0a0a0,reformar:0xf3cf96};let maxH=defPD;
   for(const w of its.filter(i=>i.t==='seg'&&SEG[i.k].wall)){
     const G=geom(w.a,w.b),e=w.e||0.15,mid={x:(w.a.x+w.b.x)/2,y:(w.a.y+w.b.y)/2},o2=e/2+0.25;
     const H=Math.max(pdAt({x:mid.x+G.nx*o2,y:mid.y+G.ny*o2}),pdAt({x:mid.x-G.nx*o2,y:mid.y-G.ny*o2}))||defPD;maxH=Math.max(maxH,H);
@@ -1216,13 +1278,13 @@ function build3D(){
       let t0=(o.a.x-w.a.x)*G.ux+(o.a.y-w.a.y)*G.uy,t1=(o.b.x-w.a.x)*G.ux+(o.b.y-w.a.y)*G.uy;if(t0>t1)[t0,t1]=[t1,t0];if(t1<0.01||t0>G.L-0.01)continue;t0=Math.max(0,t0);t1=Math.min(G.L,t1);
       const sill=o.k==='porta'?0:(o.peit!=null?o.peit:1.1),head=Math.min(H,o.k==='porta'?(o.alt||2.1):sill+(o.alt||1.2));gaps.push({t0,t1,sill,head})}
     gaps.sort((a,b)=>a.t0-b.t0);const m=mat(WCOL[w.k],w.k==='demolir'?{transparent:true,opacity:.55}:{}),ry=-Math.atan2(G.uy,G.ux);
-    const piece=(t0,t1,y0,y1)=>{if(t1-t0<0.005||y1-y0<0.005)return;const tc=(t0+t1)/2;addBox(w.a.x+G.ux*tc,(y0+y1)/2,w.a.y+G.uy*tc,t1-t0,y1-y0,e,ry,m,true,true,w.k==='demolir'?0xd77b7b:w.k==='construir'?0x3f8f5a:0x3d434c)};
+    const piece=(t0,t1,y0,y1)=>{if(t1-t0<0.005||y1-y0<0.005)return;const tc=(t0+t1)/2;addBox(w.a.x+G.ux*tc,(y0+y1)/2,w.a.y+G.uy*tc,t1-t0,y1-y0,e,ry,m,true,true,w.k==='demolir'?0xd77b7b:w.k==='construir'?0x3f8f5a:w.k==='reformar'?0xc7771f:0x3d434c)};
     let cur=-e/2;for(const gp of gaps){if(gp.t0<cur)continue;piece(cur,gp.t0,0,H);piece(gp.t0,gp.t1,0,gp.sill);piece(gp.t0,gp.t1,gp.head,H);cur=gp.t1}piece(cur,G.L+e/2,0,H)}
   for(const o of openings){const G=geom(o.a,o.b),e=o.e||0.15;
     if(o.k==='janela'){const sill=o.peit!=null?o.peit:1.1,hh=o.alt||1.2,mx=(o.a.x+o.b.x)/2,my=(o.a.y+o.b.y)/2;addBox(mx,sill+hh/2,my,G.L,hh,0.02,-Math.atan2(G.uy,G.ux),mat(0x8ecbf0,{transparent:true,opacity:.4}),false,true)}
     else{const sd=o.lado||1,dx=G.nx*sd,dy=G.ny*sd,hh=o.alt||2.1;addBox(o.a.x+dx*G.L/2,hh/2,o.a.y+dy*G.L/2,G.L,hh,0.04,-Math.atan2(dy,dx),mat(0xa47148),true,true)}}
   const floorCol=p=>{p=(p||'').toLowerCase();if(/madeira|laminado|taco|assoalho|vin/.test(p))return 0xc9a27a;if(/cer[aâ]mica/.test(p))return 0xe0d5bf;if(/porcelanato|m[aá]rmore|granito/.test(p))return 0xebe7df;if(/cimento|contrapiso|concreto/.test(p))return 0xbcbcbc;if(/hidr/.test(p))return 0xd6b39b;if(/carpete/.test(p))return 0x9aa3ad;return 0xf1efea};
-  for(const a of areas){const sh=new THREE.Shape(a.pts.map(p=>new THREE.Vector2(p.x,p.y)));const me=new THREE.Mesh(new THREE.ShapeGeometry(sh),new THREE.MeshLambertMaterial({color:floorCol(a.piso),side:THREE.DoubleSide,clippingPlanes:clip}));me.rotation.x=Math.PI/2;me.position.y=0.004;scene.add(me)}
+  for(const a of areas){const sh=new THREE.Shape(a.pts.map(p=>new THREE.Vector2(p.x,p.y)));const me=new THREE.Mesh(new THREE.ShapeGeometry(sh),new THREE.MeshLambertMaterial({color:floorCol(phase!=='hoje'&&isObra(a)&&a.pisoNovo?a.pisoNovo:a.piso),side:THREE.DoubleSide,clippingPlanes:clip}));me.rotation.x=Math.PI/2;me.position.y=0.004;scene.add(me)}
   const b=bounds()||{x0:0,y0:0,x1:5,y1:5};const pad=0.6;addBox((b.x0+b.x1)/2,-0.06,(b.y0+b.y1)/2,b.x1-b.x0+pad*2,0.12,b.y1-b.y0+pad*2,0,mat(0xc9ccd2),true,true);
   const FCOL={bancada:0xd9cfbf,pia_cozinha:0xd9cfbf,fogao:0x3a3d42,aquecedor:0xf3ecd8};
   for(const f of its.filter(i=>i.t==='fix')){const ry=-(f.rot||0)*Math.PI/180,r=(f.rot||0)*Math.PI/180,c=Math.cos(r),sn=Math.sin(r),L=(lx,ly)=>({x:f.x+lx*c-ly*sn,y:f.y+lx*sn+ly*c});const white=mat(0xfafafa),h=f.h||FIX[f.k].h||0.4;
@@ -1412,6 +1474,7 @@ function drawQuant(pdf,area){const s=computeSummary(),cols=3,cw=(area.w-10)/cols
   if(s.amb.length){head('AMBIENTES');s.amb.forEach(a=>row(a.n+(a.piso?' — '+a.piso:''),fmt(a.A)+' m²'));row('Total',fmt(s.amb.reduce((t,a)=>t+a.A,0))+' m²',true);y+=3}
   if(Object.keys(s.piso).length){head('PISOS');for(const[k,v]of Object.entries(s.piso))row(k,fmt(v)+' m²');y+=3}
   if(Object.keys(s.forro).length){head('FORROS');for(const[k,v]of Object.entries(s.forro))row(k,fmt(v)+' m²');y+=3}
+  if(s.novo.length){head('PISO NOVO (COM PERDA)');s.novo.forEach(x=>row(x.n+' — '+x.key,fmt(x.c.Ap)+' m²'+(x.c.pecas?' · '+x.c.pecas+' pç':'')));for(const[k,T]of Object.entries(s.novoTot))row('Total '+k,fmt(T.Ap)+' m²'+(T.hasP?' · '+T.pecas+' pç':''),true);row('Rodapé',fmt(Object.values(s.novoTot).reduce((a,T)=>a+T.rod,0))+' m');y+=3}
   const sg=Object.entries(s.seg);if(sg.length||s.open.porta||s.open.janela){head('PAREDES E TUBULAÇÕES');sg.forEach(([k,v])=>row(SEG[k].label,fmt(v)+' m'+(SEG[k].wall?' ('+fmt(v*2.8,1)+' m²)':'')));if(s.open.porta)row('Portas',s.open.porta);if(s.open.janela)row('Janelas',s.open.janela);y+=3}
   const sy=Object.entries(s.sym);if(sy.length){head('PONTOS');sy.forEach(([k,v])=>row(SYM[k].label,v));y+=3}
   const fx=Object.entries(s.fix);if(fx.length){head('LOUÇAS E EQUIPAMENTOS');fx.forEach(([k,v])=>row(FIX[k].label,v));if(s.banc)row('Bancadas (comprimento)',fmt(s.banc)+' m');y+=3}
