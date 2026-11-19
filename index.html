@@ -36,7 +36,8 @@ header{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#fff;
 .tsep{width:34px;height:1px;background:var(--bd);margin:3px 0;flex-shrink:0}
 #stage{flex:1;position:relative;min-width:0;overflow:hidden}
 #cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
-#hint{transition:opacity .3s;position:absolute;left:10px;bottom:10px;max-width:calc(100% - 140px);background:rgba(31,36,48,.82);color:#fff;font-size:12px;padding:6px 10px;border-radius:8px;pointer-events:none}
+#hint{transition:opacity .3s;cursor:pointer;position:absolute;left:10px;bottom:10px;max-width:calc(100% - 140px);background:rgba(31,36,48,.82);color:#fff;font-size:12px;padding:6px 26px 6px 10px;border-radius:8px}
+#hint::after{content:'✕';position:absolute;right:8px;top:5px;opacity:.7}
 #zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:4px}
 #zoom button{width:36px;height:36px;border-radius:8px;border:1px solid var(--bd);background:#fff;font-size:18px;display:flex;align-items:center;justify-content:center}
 #zoom svg{width:18px;height:18px}
@@ -64,6 +65,8 @@ header{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#fff;
 .lp-h{font-size:11px;color:var(--mu);margin-top:6px}
 #symBar{position:absolute;left:8px;right:8px;top:8px;background:#fff;border:1px solid var(--bd);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.08);padding:6px;display:none;gap:4px;overflow-x:auto}
 #symBar.show{display:flex}
+.palx{position:sticky;right:0;flex-shrink:0;margin-left:auto;border:1px solid var(--bd);background:#fff;border-radius:8px;padding:4px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:10px;color:var(--mu);box-shadow:-8px 0 10px #fff}
+.palx span{font-size:18px;line-height:1;color:var(--tx)}
 #symBar,#tools{touch-action:pan-x}
 .symb{flex-shrink:0;border:1px solid transparent;background:transparent;border-radius:8px;padding:4px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--mu);width:74px}
 .symb canvas{width:30px;height:30px}
@@ -130,7 +133,9 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
   .tsep{width:1px;height:34px;margin:0 3px}
   #panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:55vh;z-index:30;border-left:none;border-top:1px solid var(--bd);box-shadow:0 -10px 30px rgba(0,0,0,.12);border-radius:14px 14px 0 0;transform:translateY(105%);transition:transform .2s}
   #panel.open{transform:none}
-  #pclose{display:block;flex:0 0 44px!important}
+  #pclose{display:block;flex:0 0 auto!important;margin:5px 6px;padding:6px 12px!important;border:1px solid var(--bd)!important;border-radius:8px;background:#f3f4f6!important;color:var(--tx)!important;font-weight:600;font-size:13px!important}
+  #tabs button[data-tab]{font-size:11.5px;padding:10px 2px}
+  #panel::before{content:'';position:absolute;top:5px;left:50%;width:38px;height:4px;margin-left:-19px;border-radius:2px;background:#d1d5db}
   #mobPanelBtn{display:none!important}
   #bMenu{display:inline-flex}
   #b3d,#bBg,#bProjects,#bExport{display:none!important}
@@ -203,7 +208,7 @@ table.sum td:last-child{text-align:right;white-space:nowrap;font-variant-numeric
         <button data-tab="layers">Camadas</button>
         <button data-tab="legend">Legenda</button>
         <button data-tab="summary">Resumo</button>
-        <button id="pclose">✕</button>
+        <button id="pclose">✕ Fechar</button>
       </div>
       <div id="pbody"></div>
     </aside>
@@ -691,16 +696,17 @@ function duplicateSel(){const it=sel&&byId(sel);if(!it)return;const c=JSON.parse
 function buildTools(){const n=$('#tools');n.innerHTML='';for(const t of TOOLS){if(t==='|'){n.insertAdjacentHTML('beforeend','<div class="tsep"></div>');continue}
   const b=document.createElement('button');b.className='tool';b.dataset.tool=t[0];b.title=t[1];b.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[t[0]]}</svg><span>${t[1]}</span>`;b.onclick=()=>setTool(t[0]);if(t[0]==='porta'||t[0]==='janela')b.addEventListener('pointerdown',e=>palDown(e,'open',t[0]));if(t[0]==='room')b.addEventListener('pointerdown',e=>palDown(e,'room',roomKind));n.appendChild(b)}}
 function setTool(t){if(pendingLen)cancelLen();finishDraw();tool=t;document.querySelectorAll('.tool').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));
-  if(t==='sym')buildSymBar();else if(t==='fix')buildFixBar();else if(t==='room')buildRoomBar();
+  if(t==='sym')buildSymBar();else if(t==='fix')buildFixBar();else if(t==='room')buildRoomBar();if(t==='sym'||t==='fix'||t==='room')addPalClose();
   $('#symBar').classList.toggle('show',t==='sym'||t==='fix'||t==='room');snapMark=null;hoverFix=null;hoverSym=null;hoverRoom=null;
   calPts=[];updBgBar();if(typeof updSelBar==='function'&&doc)updSelBar();
-  const h=t==='corte'?'corte':SEG[t]?(SEG[t].wall?'wall':SEG[t].opening?'opening':SEG[t].pipe?'pipe':'cota'):t;$('#hint').textContent=HINTS[h]||'';$('#hint').style.opacity=1;hintSeen=0;
+  const h=t==='corte'?'corte':SEG[t]?(SEG[t].wall?'wall':SEG[t].opening?'opening':SEG[t].pipe?'pipe':'cota'):t;$('#hint').textContent=HINTS[h]||'';$('#hint').style.opacity=HINTS[h]?1:0;$('#hint').style.visibility='';hintSeen=0;
   cv.style.cursor=t==='pan'?'grab':t==='select'?'default':'crosshair';req()}
 function roomCanvas(k,w=34,h=30,dd){const c=document.createElement('canvas'),d=dd||window.devicePixelRatio||1;c.width=w*d;c.height=h*d;c.style.width=w+'px';c.style.height=h+'px';const g=c.getContext('2d');g.scale(d,d);
   const P=ROOMS[k].pts,xs=P.map(p=>p[0]),ys=P.map(p=>p[1]),W=Math.max(...xs),H=Math.max(...ys),s=Math.min((w-6)/W,(h-6)/H),ox=(w-W*s)/2,oy=(h-H*s)/2;
   g.beginPath();P.forEach(([x,y],i)=>{i?g.lineTo(ox+x*s,oy+y*s):g.moveTo(ox+x*s,oy+y*s)});g.closePath();g.fillStyle='rgba(143,179,220,.3)';g.fill();g.lineWidth=2.6;g.strokeStyle='#3d4450';g.stroke();return c}
 function buildRoomBar(){const bar=$('#symBar');bar.innerHTML='<div class="symgrp">Cômodos</div>';for(const k of Object.keys(ROOMS)){const b=document.createElement('button');b.className='symb'+(k===roomKind?' on':'');b.dataset.k=k;b.appendChild(roomCanvas(k));b.insertAdjacentHTML('beforeend',`<span>${ROOMS[k].label}</span>`);
   b.onclick=()=>{roomKind=k;bar.querySelectorAll('.symb').forEach(x=>x.classList.toggle('on',x.dataset.k===k))};b.addEventListener('pointerdown',e=>palDown(e,'room',k));bar.appendChild(b)}}
+function addPalClose(){const bar=$('#symBar');const b=document.createElement('button');b.className='palx';b.innerHTML='<span>✕</span>Fechar';b.title='Fechar a lista';b.onclick=()=>setTool('select');bar.appendChild(b)}
 let palDrag=null;
 function palDown(e,mode,k){palDrag={mode,k,sx:e.clientX,sy:e.clientY,active:false,id:e.pointerId}}
 function palSelect(mode,k){if(mode==='room'){roomKind=k;if(tool!=='room')setTool('room')}else if(mode==='sym'){symKind=k;if(tool!=='sym')setTool('sym')}else if(mode==='fix'){fixKind=k;if(tool!=='fix')setTool('fix')}
@@ -780,7 +786,7 @@ $('#lpOk').onclick=confirmLen;$('#lpNo').onclick=cancelLen;
 // ================= Pointer =================
 let hintSeen=0;const ptrs=new Map();let gest=null,spaceDown=false;
 cv.addEventListener('contextmenu',e=>e.preventDefault());
-cv.addEventListener('pointerdown',e=>{
+cv.addEventListener('pointerdown',e=>{if(window.innerWidth<=780&&$('#panel').classList.contains('open'))$('#panel').classList.remove('open');
   if(++hintSeen>=2)$('#hint').style.opacity=0;
   if(pendingLen&&!ptrs.size){confirmLen();return}
   cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.offsetX,y:e.offsetY});
@@ -954,7 +960,7 @@ function updSelBar(){const bar=$('#selBar'),it=sel&&byId(sel);bar.classList.togg
 function renderPanel(){updSelBar();const b=$('#pbody');
   if(panelTab==='layers')return renderLayers(b);if(panelTab==='legend')return renderLegend(b);if(panelTab==='summary')return renderSummary(b);
   const it=sel&&byId(sel);
-  if(!it){b.innerHTML=`<div class="empty"><p><b>Como usar</b></p><p>1. Desenhe as <b>paredes existentes</b> tocando nos cantos (ou digitando as medidas).</p><p>2. Marque <b>portas e janelas</b> sobre as paredes.</p><p>3. Use <b>Ambiente</b> para contornar cada cômodo e anotar piso, forro e pé-direito.</p><p>4. Em <b>Pontos</b>, posicione tomadas, interruptores, água, esgoto, gás e problemas encontrados.</p><p>5. Marque em <span style="color:#2f9e5a;font-weight:600">verde</span> o que será construído e em <span style="color:#d64545;font-weight:600">vermelho</span> o que será demolido.</p><p>Tudo é salvo automaticamente. A aba <b>Resumo</b> soma áreas, metros de parede e pontos.</p></div>`;return}
+  if(!it){b.innerHTML=`<div class="empty"><p><b>Como usar</b></p><p>1. Use <b>Cômodo</b> para colocar cada ambiente pronto e toque nas paredes para digitar as medidas no topo. Para paredes soltas, use <b>Existente</b>.</p><p>2. Marque <b>portas e janelas</b> sobre as paredes.</p><p>3. Toque no meio do cômodo e em <b>⋯ Mais</b> para anotar piso, forro e pé-direito.</p><p>4. Em <b>Pontos</b>, posicione tomadas, interruptores, água, esgoto, gás e problemas encontrados.</p><p>5. Marque em <span style="color:#2f9e5a;font-weight:600">verde</span> o que será construído e em <span style="color:#d64545;font-weight:600">vermelho</span> o que será demolido.</p><p>Tudo é salvo automaticamente. A aba <b>Resumo</b> soma áreas, metros de parede e pontos.</p></div>`;return}
   let h='',title='',icon=null;
   if(it.t==='seg'){const s=SEG[it.k],L=dist(it.a,it.b);title=s.label;icon=lineCanvas(it.k);
     if(s.wall){h+=fld('Tipo',`<select data-f="k">${['parede','construir','demolir'].map(k=>`<option value="${k}"${k===it.k?' selected':''}>${SEG[k].label}</option>`).join('')}</select>`);
@@ -1111,6 +1117,7 @@ function showMenu(){modal(`<h2>Menu</h2>
   $('#mNew').onclick=newProject;$('#mProj').onclick=showProjects;$('#mExp').onclick=()=>$('#bExport').onclick();$('#m3d').onclick=()=>{closeModal();open3D('persp')};
   $('#mBg').onclick=showBg;$('#mPanel').onclick=()=>{closeModal();$('#panel').classList.add('open')}}
 $('#bMenu').onclick=showMenu;
+$('#hint').onclick=()=>{$('#hint').style.opacity=0;setTimeout(()=>{if($('#hint').style.opacity==='0')$('#hint').style.visibility='hidden'},300)};
 $('#fileIn').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{const j=JSON.parse(await f.text());if(!Array.isArray(j.items))throw 0;
   const valid=j.items.filter(i=>i&&((i.t==='seg'&&SEG[i.k]&&i.a&&i.b)||(i.t==='area'&&Array.isArray(i.pts)&&i.pts.length>=3)||(i.t==='sym'&&SYM[i.k])||(i.t==='fix'&&FIX[i.k]&&i.w>0&&i.d>0)||(i.t==='txt')));valid.forEach(i=>i.id=i.id||uid());
   const d=newDoc(j.name||f.name.replace(/\.json$/i,''));d.items=valid;closeModal();openDoc(d);scheduleSave()}catch(err){modal('<h2>Arquivo inválido</h2><p class="empty">Esse arquivo não parece ser um projeto exportado deste app.</p><div class="acts" style="justify-content:flex-end"><button class="hbtn" onclick="closeModal()">OK</button></div>')}};
@@ -1130,7 +1137,7 @@ function calTap(p){calPts.push({x:p.x,y:p.y});updBgBar();req();if(calPts.length<
   askText('Qual a medida real entre os dois pontos? (em metros)','',t=>{const real=parseNum(t);if(!(real>0)){calPts=[];updBgBar();req();return}
     const k=real/m,bg=doc.bg;bg.x=a.x-k*(a.x-bg.x);bg.y=a.y-k*(a.y-bg.y);bg.w*=k;bg.cal=true;doc.updated=Date.now();scheduleSave();
     setTool('select');fit();toast('Escala ajustada: '+fmt(real)+' m entre os pontos.')})}
-function toast(t){const h=$('#hint');h.textContent=t;h.style.opacity=1;hintSeen=0}
+function toast(t){const h=$('#hint');h.textContent=t;h.style.opacity=1;h.style.visibility='';hintSeen=0}
 function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src})}
 function compress(src,sw,sh){let maxD=2200,q=0.82,out='';for(let tries=0;tries<12;tries++){const k=Math.min(1,maxD/Math.max(sw,sh)),w=Math.round(sw*k),h=Math.round(sh*k);const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);g.drawImage(src,0,0,w,h);out=c.toDataURL('image/jpeg',q);if(out.length<235000)return out;if(q>0.5)q-=0.12;else{maxD*=0.8;q=0.7}}return out}
 function loadLib(id){const el=document.getElementById(id);if(!el)return Promise.reject(new Error('lib '+id));if(el.dataset.done)return Promise.resolve();const u=URL.createObjectURL(new Blob([el.textContent],{type:'text/javascript'}));return loadScript(u).then(()=>{el.dataset.done='1'})}
